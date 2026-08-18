@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +17,8 @@ import numpy as np
 CALIBRATION_SIZE_MM = 10.0
 ASPECT_RATIO_TOLERANCE = 0.05
 MIN_CALIBRATION_SOLIDITY = 0.95
-CIRCULARITY_THRESHOLD = 0.85
+CIRCULARITY_THRESHOLD = 0.88
+CONTOUR_SMOOTHING_EPSILON_RATIO = 0.001
 DEFAULT_INPUT_PATH = Path("input") / "input.png"
 DEFAULT_OUTPUT_PATH = Path("output") / "output.nc"
 MULTIPLE_CALIBRATION_ERROR = (
@@ -117,7 +119,22 @@ def extract_contours(
     contours, hierarchy = cv2.findContours(
         binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
     )
+    contours = smooth_contours(contours)
     return contours, hierarchy
+
+
+def smooth_contours(
+    contours: Sequence[np.ndarray],
+    epsilon_ratio: float = CONTOUR_SMOOTHING_EPSILON_RATIO,
+) -> list[np.ndarray]:
+    """Reduce raster stair-stepping while retaining the original contour shape."""
+    smoothed_contours: list[np.ndarray] = []
+    for contour in contours:
+        # 0.1% of the perimeter preserves curves while removing small pixel steps.
+        epsilon = epsilon_ratio * cv2.arcLength(contour, True)
+        approx_contour = cv2.approxPolyDP(contour, epsilon, True)
+        smoothed_contours.append(approx_contour)
+    return smoothed_contours
 
 
 def valid_contour_indices(contours: Sequence[np.ndarray]) -> list[int]:
@@ -229,13 +246,13 @@ def contour_circularity(contour: np.ndarray) -> float:
     if perimeter <= 0:
         return 0.0
     area = abs(cv2.contourArea(contour))
-    return float((4.0 * np.pi * area) / (perimeter * perimeter))
+    return float((4.0 * math.pi * area) / (perimeter * perimeter))
 
 
 def is_ideal_circle(
     contour: np.ndarray, threshold: float = CIRCULARITY_THRESHOLD
 ) -> bool:
-    return contour_circularity(contour) >= threshold
+    return contour_circularity(contour) > threshold
 
 
 def circle_geometry_mm(
@@ -317,14 +334,13 @@ def generate_gcode(
             ]
         )
         if ideal_circle:
-            arc_command = contour_arc_command(points)
             opposite_x = center_x - radius
             lines.extend(
                 [
-                    f"{arc_command} X{_format_float(opposite_x)} "
+                    f"G02 X{_format_float(opposite_x)} "
                     f"Y{_format_float(center_y)} I{_format_float(-radius)} "
                     f"J0.000 F{cut_feed} (Circle half 1)",
-                    f"{arc_command} X{_format_float(start_x)} "
+                    f"G02 X{_format_float(start_x)} "
                     f"Y{_format_float(start_y)} I{_format_float(radius)} "
                     f"J0.000 F{cut_feed} (Close contour)",
                 ]

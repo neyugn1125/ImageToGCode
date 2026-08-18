@@ -10,6 +10,7 @@ import numpy as np
 
 from run import (
     CIRCULARITY_THRESHOLD,
+    CONTOUR_SMOOTHING_EPSILON_RATIO,
     DEFAULT_INPUT_PATH,
     DEFAULT_OUTPUT_PATH,
     MULTIPLE_CALIBRATION_ERROR,
@@ -25,6 +26,7 @@ from run import (
     main,
     order_contours_child_first,
     parse_args,
+    smooth_contours,
     transform_contour,
     valid_contour_indices,
     validate_config,
@@ -76,6 +78,20 @@ class ImageToGcodeTests(unittest.TestCase):
         self.assertLess(contour_circularity(rectangle), CIRCULARITY_THRESHOLD)
         self.assertFalse(is_ideal_circle(rectangle))
 
+    def test_contour_smoothing_uses_point_one_percent_perimeter(self) -> None:
+        contour = make_circle_contour(radius=40.0)
+        expected = cv2.approxPolyDP(
+            contour,
+            CONTOUR_SMOOTHING_EPSILON_RATIO * cv2.arcLength(contour, True),
+            True,
+        )
+
+        smoothed = smooth_contours([contour])
+
+        self.assertEqual(1, len(smoothed))
+        np.testing.assert_array_equal(expected, smoothed[0])
+        self.assertLessEqual(len(smoothed[0]), len(contour))
+
     def test_ideal_circle_uses_two_half_circle_ij_arcs(self) -> None:
         circle = make_circle_contour(center=(50.0, 60.0), radius=20.0)
         center_x, center_y, radius = circle_geometry_mm(
@@ -98,7 +114,7 @@ class ImageToGcodeTests(unittest.TestCase):
             line for line in gcode.splitlines() if line.startswith(("G02 ", "G03 "))
         ]
         self.assertEqual(2, len(arc_lines))
-        self.assertEqual(arc_lines[0][:3], arc_lines[1][:3])
+        self.assertTrue(all(line.startswith("G02 ") for line in arc_lines))
         self.assertIn(f"I-{expected_radius:.3f} J0.000", arc_lines[0])
         self.assertIn(f"I{expected_radius:.3f} J0.000", arc_lines[1])
         self.assertNotIn("G01 X", gcode)
