@@ -172,7 +172,3 @@ Bộ kiểm thử bao gồm hiệu chuẩn, bounding box G54, hierarchy child-fi
 └── tests/
     └── test_image_to_gcode.py
 ```
-
-## Giấy phép
-
-Dự án chưa kèm file license. Hãy bổ sung license phù hợp trước khi phát hành công khai trên GitHub.
