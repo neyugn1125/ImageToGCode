@@ -16,6 +16,7 @@ import numpy as np
 CALIBRATION_SIZE_MM = 10.0
 ASPECT_RATIO_TOLERANCE = 0.05
 MIN_CALIBRATION_SOLIDITY = 0.95
+CIRCULARITY_THRESHOLD = 0.85
 DEFAULT_INPUT_PATH = Path("input") / "input.png"
 DEFAULT_OUTPUT_PATH = Path("output") / "output.nc"
 MULTIPLE_CALIBRATION_ERROR = (
@@ -222,6 +223,44 @@ def transform_contour(
     return transformed
 
 
+def contour_circularity(contour: np.ndarray) -> float:
+    """Return 4*pi*A/P^2, where 1.0 is an ideal mathematical circle."""
+    perimeter = cv2.arcLength(contour, True)
+    if perimeter <= 0:
+        return 0.0
+    area = abs(cv2.contourArea(contour))
+    return float((4.0 * np.pi * area) / (perimeter * perimeter))
+
+
+def is_ideal_circle(
+    contour: np.ndarray, threshold: float = CIRCULARITY_THRESHOLD
+) -> bool:
+    return contour_circularity(contour) >= threshold
+
+
+def circle_geometry_mm(
+    contour: np.ndarray, scale_factor: float, x_min: float, y_max: float
+) -> tuple[float, float, float]:
+    """Fit an enclosing circle and transform its center/radius to G54 mm."""
+    (center_x_px, center_y_px), radius_px = cv2.minEnclosingCircle(contour)
+    center_x = (center_x_px - x_min) / scale_factor
+    center_y = (y_max - center_y_px) / scale_factor
+    radius = radius_px / scale_factor
+    if not np.all(np.isfinite([center_x, center_y, radius])) or radius <= 0:
+        raise RuntimeError("Lỗi: Hình học đường tròn nhận dạng không hợp lệ.")
+    return float(center_x), float(center_y), float(radius)
+
+
+def contour_arc_command(points: np.ndarray) -> str:
+    """Preserve contour traversal direction after conversion to machine XY."""
+    x_values = points[:, 0]
+    y_values = points[:, 1]
+    signed_double_area = np.sum(
+        x_values * np.roll(y_values, -1) - np.roll(x_values, -1) * y_values
+    )
+    return "G03" if signed_double_area >= 0 else "G02"
+
+
 def _format_float(value: float) -> str:
     # Avoid emitting confusing negative zero after coordinate conversion.
     if abs(value) < 0.0005:
@@ -259,10 +298,17 @@ def generate_gcode(
     ]
 
     for index in ordered_indices:
-        points = transform_contour(
-            contours[index], scale_factor, x_min, y_max
-        )
-        start_x, start_y = points[0]
+        contour = contours[index]
+        points = transform_contour(contour, scale_factor, x_min, y_max)
+        ideal_circle = is_ideal_circle(contour)
+        if ideal_circle:
+            center_x, center_y, radius = circle_geometry_mm(
+                contour, scale_factor, x_min, y_max
+            )
+            start_x = center_x + radius
+            start_y = center_y
+        else:
+            start_x, start_y = points[0]
         lines.extend(
             [
                 f"G00 X{_format_float(start_x)} Y{_format_float(start_y)}",
@@ -270,18 +316,30 @@ def generate_gcode(
                 f"G01 Z{cut_depth} F{plunge_feed} (Plunge)",
             ]
         )
-        for x_value, y_value in points[1:]:
-            lines.append(
-                f"G01 X{_format_float(x_value)} "
-                f"Y{_format_float(y_value)} F{cut_feed} (Cut)"
+        if ideal_circle:
+            arc_command = contour_arc_command(points)
+            opposite_x = center_x - radius
+            lines.extend(
+                [
+                    f"{arc_command} X{_format_float(opposite_x)} "
+                    f"Y{_format_float(center_y)} I{_format_float(-radius)} "
+                    f"J0.000 F{cut_feed} (Circle half 1)",
+                    f"{arc_command} X{_format_float(start_x)} "
+                    f"Y{_format_float(start_y)} I{_format_float(radius)} "
+                    f"J0.000 F{cut_feed} (Close contour)",
+                ]
             )
-        lines.extend(
-            [
+        else:
+            for x_value, y_value in points[1:]:
+                lines.append(
+                    f"G01 X{_format_float(x_value)} "
+                    f"Y{_format_float(y_value)} F{cut_feed} (Cut)"
+                )
+            lines.append(
                 f"G01 X{_format_float(start_x)} Y{_format_float(start_y)} "
-                f"F{cut_feed} (Close contour)",
-                f"G00 Z{safe_z} (Retract)",
-            ]
-        )
+                f"F{cut_feed} (Close contour)"
+            )
+        lines.append(f"G00 Z{safe_z} (Retract)")
 
     lines.extend(
         [

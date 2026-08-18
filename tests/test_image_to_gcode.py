@@ -9,14 +9,18 @@ import cv2
 import numpy as np
 
 from run import (
+    CIRCULARITY_THRESHOLD,
     DEFAULT_INPUT_PATH,
     DEFAULT_OUTPUT_PATH,
     MULTIPLE_CALIBRATION_ERROR,
     MachiningConfig,
+    circle_geometry_mm,
+    contour_circularity,
     convert_image_to_gcode,
     detect_calibration,
     extract_contours,
     generate_gcode,
+    is_ideal_circle,
     machining_origin,
     main,
     order_contours_child_first,
@@ -40,6 +44,19 @@ def write_test_image(path: Path, *, calibration_count: int = 1) -> None:
         raise RuntimeError(f"Could not create test image: {path}")
 
 
+def make_circle_contour(
+    center: tuple[float, float] = (50.0, 50.0), radius: float = 20.0
+) -> np.ndarray:
+    angles = np.linspace(0.0, 2.0 * np.pi, 72, endpoint=False)
+    points = np.column_stack(
+        (
+            center[0] + radius * np.cos(angles),
+            center[1] + radius * np.sin(angles),
+        )
+    )
+    return np.rint(points).astype(np.int32).reshape(-1, 1, 2)
+
+
 class ImageToGcodeTests(unittest.TestCase):
     def test_cli_defaults(self) -> None:
         args = parse_args([])
@@ -47,6 +64,44 @@ class ImageToGcodeTests(unittest.TestCase):
         self.assertEqual(DEFAULT_OUTPUT_PATH, args.output)
         self.assertEqual(-5.0, args.cut_depth)
         self.assertEqual(1500, args.spindle_speed)
+
+    def test_shape_recognition_classifies_circle_but_not_rectangle(self) -> None:
+        circle = make_circle_contour()
+        rectangle = np.array(
+            [[[0, 0]], [[80, 0]], [[80, 30]], [[0, 30]]], dtype=np.int32
+        )
+
+        self.assertGreaterEqual(contour_circularity(circle), CIRCULARITY_THRESHOLD)
+        self.assertTrue(is_ideal_circle(circle))
+        self.assertLess(contour_circularity(rectangle), CIRCULARITY_THRESHOLD)
+        self.assertFalse(is_ideal_circle(rectangle))
+
+    def test_ideal_circle_uses_two_half_circle_ij_arcs(self) -> None:
+        circle = make_circle_contour(center=(50.0, 60.0), radius=20.0)
+        center_x, center_y, radius = circle_geometry_mm(
+            circle, scale_factor=2.0, x_min=10.0, y_max=100.0
+        )
+        expected_radius = cv2.minEnclosingCircle(circle)[1] / 2.0
+        self.assertAlmostEqual(20.0, center_x, places=3)
+        self.assertAlmostEqual(20.0, center_y, places=3)
+        self.assertAlmostEqual(expected_radius, radius, places=6)
+
+        gcode = generate_gcode(
+            [circle],
+            [0],
+            scale_factor=2.0,
+            x_min=10.0,
+            y_max=100.0,
+            config=MachiningConfig(),
+        )
+        arc_lines = [
+            line for line in gcode.splitlines() if line.startswith(("G02 ", "G03 "))
+        ]
+        self.assertEqual(2, len(arc_lines))
+        self.assertEqual(arc_lines[0][:3], arc_lines[1][:3])
+        self.assertIn(f"I-{expected_radius:.3f} J0.000", arc_lines[0])
+        self.assertIn(f"I{expected_radius:.3f} J0.000", arc_lines[1])
+        self.assertNotIn("G01 X", gcode)
 
     def test_detects_scale_origin_and_child_first_order(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -161,8 +216,13 @@ class ImageToGcodeTests(unittest.TestCase):
             self.assertIn("O1000 (Profile Milling)", gcode)
             self.assertNotIn("nan", gcode.lower())
             self.assertNotIn("inf", gcode.lower())
-            self.assertNotIn("G02 ", gcode)
-            self.assertNotIn("G03 ", gcode)
+            arc_lines = [
+                line
+                for line in gcode.splitlines()
+                if line.startswith(("G02 ", "G03 "))
+            ]
+            self.assertEqual(2, len(arc_lines))
+            self.assertTrue(all(" I" in line and " J" in line for line in arc_lines))
             self.assertGreaterEqual(gcode.count("(Close contour)"), 2)
 
     def test_output_parent_directory_is_created(self) -> None:
