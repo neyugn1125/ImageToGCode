@@ -113,12 +113,26 @@ Các tham số CLI:
 | `--tool-number` | `1` | Số dao |
 | `--tool-offset` | `1` | Offset chiều dài dao H |
 | `--program-number` | `1000` | Số chương trình Fanuc |
+| `--strip-dimensions` | tắt | Loại bỏ đường kích thước, đường gióng, mũi tên và chữ số đo trước khi dò contour (xem [Loại bỏ số đo kích thước](#loại-bỏ-số-đo-kích-thước)) |
 
 Ví dụ ghi output sang vị trí khác:
 
 ```bash
 python run.py --input drawings/part.png --output nc/part.nc --cut-depth -2.5 --cut-feed 250 --spindle-speed 2200
 ```
+
+## Loại bỏ số đo kích thước
+
+Bản vẽ CAD xuất ra thường có kèm đường kích thước, đường gióng, mũi tên và chữ số đo (vd. `100`, `Ø10`) đè lên biên dạng chi tiết — nếu dò contour trực tiếp trên ảnh này, các đường đó sẽ bị nhận nhầm thành đường chạy dao, hoặc dính liền vào biên dạng chi tiết làm sai contour.
+
+Bật `--strip-dimensions` (CLI) hoặc tick ô "Remove dimension annotations" (GUI) để chương trình:
+
+1. Tự động ước lượng độ dày nét vẽ biên dạng chi tiết so với nét kích thước (dựa trên quy ước ISO 128: đường bao thấy được luôn được vẽ đậm hơn đường kích thước), rồi loại bỏ mọi nét mỏng hơn ngưỡng đó.
+2. Gộp lại cặp đường viền trong/ngoài mà một số bản vẽ dạng nét (không tô đặc) để lại sau khi vẽ biên dạng bằng một nét đơn, để mỗi biên dạng thật (đường bao ngoài, mỗi lỗ) chỉ còn đúng một contour.
+
+Tính năng này hoạt động với cả ảnh chi tiết tô đặc (như các ảnh mẫu trong `input/samples/`) và ảnh dạng nét vẽ kỹ thuật không tô đặc. Vì ngưỡng được ước lượng riêng theo từng ảnh, chỉ nên bật khi ảnh thực sự có đường kích thước cần loại bỏ — bật nhầm trên ảnh chi tiết tô đặc có thể xoá luôn các chi tiết nhỏ. Ô vuông hiệu chuẩn 10 x 10 mm luôn được giữ nguyên bất kể tuỳ chọn này.
+
+Lưu ý: biên dạng tròn được dò từ nét vẽ (không tô đặc) đôi khi không đạt ngưỡng circularity `> 0.88` do nét vẽ kém mượt hơn hình tô đặc, nên sẽ được xuất bằng chuỗi `G01` thay vì cung `G02`/`G03` — đường cắt vẫn đúng hình dạng, chỉ khác lệnh G-code.
 
 ## Chạy giao diện GUI
 

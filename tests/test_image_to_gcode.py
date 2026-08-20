@@ -46,6 +46,23 @@ def write_test_image(path: Path, *, calibration_count: int = 1) -> None:
         raise RuntimeError(f"Could not create test image: {path}")
 
 
+def write_dimensioned_test_image(path: Path) -> None:
+    """A part drawn as unfilled outline strokes (not solid fills), with thin
+    dimension/extension lines and text overlaid -- one extension line touches
+    the part outline directly, mirroring real CAD-exported drawings."""
+    image = np.full((360, 400, 3), 255, dtype=np.uint8)
+    cv2.rectangle(image, (20, 20), (69, 69), (0, 0, 0), -1)  # 10x10 mm calibration square
+    cv2.rectangle(image, (100, 80), (300, 260), (0, 0, 0), thickness=6)  # outline part
+    cv2.circle(image, (200, 170), 35, (0, 0, 0), thickness=6)  # outline hole
+    cv2.line(image, (100, 20), (100, 79), (0, 0, 0), thickness=2)  # extension line touching the outline
+    cv2.line(image, (60, 300), (340, 300), (0, 0, 0), thickness=2)  # dimension line
+    cv2.putText(
+        image, "200", (170, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA
+    )
+    if not cv2.imwrite(str(path), image):
+        raise RuntimeError(f"Could not create test image: {path}")
+
+
 def make_circle_contour(
     center: tuple[float, float] = (50.0, 50.0), radius: float = 20.0
 ) -> np.ndarray:
@@ -164,11 +181,11 @@ class ImageToGcodeTests(unittest.TestCase):
             write_test_image(image_path, calibration_count=0)
             contours, _ = extract_contours(image_path)
 
-            with self.assertRaisesRegex(RuntimeError, "Không tìm thấy ô hiệu chuẩn"):
+            with self.assertRaisesRegex(RuntimeError, "No 10x10 mm calibration square"):
                 detect_calibration(contours, valid_contour_indices(contours))
 
     def test_unreadable_image_is_an_error(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "Không thể đọc ảnh đầu vào"):
+        with self.assertRaisesRegex(RuntimeError, "Unable to read input image"):
             extract_contours(Path("does-not-exist.png"))
 
     def test_config_validation(self) -> None:
@@ -270,6 +287,30 @@ class ImageToGcodeTests(unittest.TestCase):
                 contour_count,
                 output_path.read_text(encoding="ascii").count("(Close contour)"),
             )
+
+    def test_strip_dimensions_removes_annotations_and_collapses_outline_rings(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = Path(directory) / "dimensioned.png"
+            output_path = Path(directory) / "output.nc"
+            write_dimensioned_test_image(image_path)
+
+            # Without stripping, the dimension line/text/touching extension
+            # line are all traced as bogus extra machining contours.
+            _, unstripped_contour_count = convert_image_to_gcode(
+                image_path, output_path, MachiningConfig()
+            )
+            self.assertGreater(unstripped_contour_count, 2)
+
+            scale_factor, contour_count = convert_image_to_gcode(
+                image_path, output_path, MachiningConfig(), strip_dimensions=True
+            )
+
+            self.assertAlmostEqual(5.0, scale_factor, places=6)
+            self.assertEqual(2, contour_count)  # part outline + the one hole
+            gcode = output_path.read_text(encoding="ascii")
+            self.assertEqual(2, gcode.count("(Close contour)"))
 
 
 if __name__ == "__main__":

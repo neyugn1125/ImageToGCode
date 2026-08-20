@@ -21,9 +21,10 @@ CIRCULARITY_THRESHOLD = 0.88
 CONTOUR_SMOOTHING_EPSILON_RATIO = 0.001
 DEFAULT_INPUT_PATH = Path("input") / "input.png"
 DEFAULT_OUTPUT_PATH = Path("output") / "output.nc"
+MIN_DIMENSION_RESIDUE_AREA_PX_FACTOR = 16
 MULTIPLE_CALIBRATION_ERROR = (
-    "Lỗi: Phát hiện nhiều hơn 1 ô hiệu chuẩn. Vui lòng xóa các hình vuông "
-    "trùng lặp hoặc thay đổi hình dáng chi tiết phay để tránh nhầm lẫn"
+    "Error: Detected more than 1 calibration square. Please remove the "
+    "duplicate squares or change the part geometry to avoid ambiguity."
 )
 
 
@@ -45,7 +46,8 @@ class MachiningConfig:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Chuyển ảnh bản vẽ 2D nền trắng thành G-code phay biên dạng Fanuc."
+            "Convert a white-background 2D drawing image into Fanuc profile "
+            "milling G-code."
         )
     )
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT_PATH)
@@ -59,6 +61,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tool-number", type=int, default=1)
     parser.add_argument("--tool-offset", type=int, default=1)
     parser.add_argument("--program-number", type=int, default=1000)
+    parser.add_argument(
+        "--strip-dimensions",
+        action="store_true",
+        help=(
+            "Remove dimension lines, extension lines, arrows and text that are "
+            "thinner than the part outline before extracting contours."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -85,40 +95,67 @@ def validate_config(config: MachiningConfig) -> None:
         config.approach_z,
     )
     if not all(np.isfinite(value) for value in numeric_values):
-        raise ValueError("Lỗi: Các tham số số phải là giá trị hữu hạn.")
+        raise ValueError("Error: Numeric parameters must be finite values.")
     if config.cut_depth >= 0:
-        raise ValueError("Lỗi: Chiều sâu cắt --cut-depth phải là số âm.")
+        raise ValueError("Error: --cut-depth must be a negative number.")
     if config.plunge_feed <= 0 or config.cut_feed <= 0:
-        raise ValueError("Lỗi: Tốc độ chạy dao phải lớn hơn 0.")
+        raise ValueError("Error: Feed rates must be greater than 0.")
     if config.spindle_speed <= 0:
-        raise ValueError("Lỗi: Tốc độ trục chính phải lớn hơn 0.")
+        raise ValueError("Error: Spindle speed must be greater than 0.")
     if config.tool_number <= 0 or config.tool_offset <= 0:
-        raise ValueError("Lỗi: Số dao và offset dao phải lớn hơn 0.")
+        raise ValueError("Error: Tool number and tool offset must be greater than 0.")
     if config.program_number <= 0:
-        raise ValueError("Lỗi: Số chương trình phải lớn hơn 0.")
+        raise ValueError("Error: Program number must be greater than 0.")
     if not config.safe_z > config.approach_z > config.cut_depth:
         raise ValueError(
-            "Lỗi: Các cao độ phải thỏa mãn safe-z > approach-z > cut-depth."
+            "Error: Heights must satisfy safe-z > approach-z > cut-depth."
         )
 
 
 def extract_contours(
     image_path: Path,
+    strip_dimensions: bool = False,
 ) -> tuple[list[np.ndarray], np.ndarray | None]:
     if not image_path.is_file():
-        raise RuntimeError(f"Lỗi: Không thể đọc ảnh đầu vào: {image_path}")
+        raise RuntimeError(f"Error: Unable to read input image: {image_path}")
     image = cv2.imread(str(image_path))
     if image is None:
-        raise RuntimeError(f"Lỗi: Không thể đọc ảnh đầu vào: {image_path}")
+        raise RuntimeError(f"Error: Unable to read input image: {image_path}")
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     _, binary = cv2.threshold(
         blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
     )
-    contours, hierarchy = cv2.findContours(
-        binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-    )
+
+    if strip_dimensions:
+        # The calibration square is solid, so its own stroke "width" (half its
+        # side length) is far larger than either annotation or outline
+        # strokes; left in, it skews the Otsu split away from the boundary we
+        # actually want. Exclude it from the sample, not from the strip pass.
+        raw_contours, _ = cv2.findContours(
+            binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+        )
+        raw_valid = valid_contour_indices(raw_contours)
+        calibration_index, _ = detect_calibration(raw_contours, raw_valid)
+        sample_binary = binary.copy()
+        cv2.drawContours(
+            sample_binary, raw_contours, calibration_index, 0, thickness=cv2.FILLED
+        )
+        kernel_px = dimension_stroke_kernel_px(sample_binary)
+        cleaned = remove_dimension_annotations(binary, kernel_px)
+        contours, hierarchy = cv2.findContours(
+            cleaned, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+        )
+        min_residue_area = (kernel_px**2) * MIN_DIMENSION_RESIDUE_AREA_PX_FACTOR
+        contours = prune_stroke_ring_artifacts(
+            contours, hierarchy, cleaned.shape, kernel_px, min_residue_area
+        )
+    else:
+        contours, hierarchy = cv2.findContours(
+            binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+        )
+
     contours = smooth_contours(contours)
     return contours, hierarchy
 
@@ -130,11 +167,137 @@ def smooth_contours(
     """Reduce raster stair-stepping while retaining the original contour shape."""
     smoothed_contours: list[np.ndarray] = []
     for contour in contours:
+        if len(contour) < 3:
+            # Degenerate placeholder left by prune_stroke_ring_artifacts, or a
+            # stray raster speck; valid_contour_indices() filters these out.
+            smoothed_contours.append(contour)
+            continue
         # 0.1% of the perimeter preserves curves while removing small pixel steps.
         epsilon = epsilon_ratio * cv2.arcLength(contour, True)
         approx_contour = cv2.approxPolyDP(contour, epsilon, True)
         smoothed_contours.append(approx_contour)
     return smoothed_contours
+
+
+def _stroke_ridge_radii(binary: np.ndarray) -> np.ndarray:
+    """Half-width (distance-to-background) sampled at skeleton ridge pixels,
+    one representative value per stroke rather than per pixel, so long thin
+    lines don't dominate a per-pixel histogram over short thick ones."""
+    dist = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
+    dilated = cv2.dilate(dist, np.ones((3, 3), np.float32))
+    ridge = (dist >= dilated - 1e-6) & (dist > 0)
+    return dist[ridge]
+
+
+def dimension_stroke_kernel_px(binary: np.ndarray) -> int:
+    """Pick a structuring-element size that separates thin dimension/extension
+    lines, arrows and text from the thicker part-outline strokes, using the
+    drawing's own stroke half-width distribution (ISO drafting convention:
+    visible outlines are drawn noticeably thicker than annotation lines)."""
+    radii = _stroke_ridge_radii(binary)
+    if radii.size == 0:
+        return 2
+    scaled = np.clip(radii / max(radii.max(), 1e-6) * 255, 0, 255).astype(np.uint8)
+    threshold_scaled, _ = cv2.threshold(
+        scaled, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
+    threshold_radius = threshold_scaled / 255.0 * radii.max()
+    # +1px margin: the Otsu split sits right at the annotation stroke's own
+    # width, which isn't quite enough to fully erase it.
+    return max(2, int(round(threshold_radius * 2)) + 1)
+
+
+def remove_dimension_annotations(binary: np.ndarray, kernel_px: int) -> np.ndarray:
+    """Strip dimension lines, extension lines, arrowheads and text that are
+    thinner than the part outline strokes, leaving only the part geometry."""
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_px, kernel_px))
+    return cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+
+
+def _contour_pair_masks(
+    parent_contour: np.ndarray,
+    child_contour: np.ndarray,
+    image_shape: tuple[int, int],
+    pad: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    x, y, w, h = cv2.boundingRect(parent_contour)
+    x0, y0 = max(x - pad, 0), max(y - pad, 0)
+    x1 = min(x + w + pad, image_shape[1])
+    y1 = min(y + h + pad, image_shape[0])
+    offset = (-x0, -y0)
+    crop_shape = (max(y1 - y0, 1), max(x1 - x0, 1))
+    parent_mask = np.zeros(crop_shape, dtype=np.uint8)
+    cv2.drawContours(
+        parent_mask, [parent_contour], -1, 255, thickness=cv2.FILLED, offset=offset
+    )
+    child_mask = np.zeros(crop_shape, dtype=np.uint8)
+    cv2.drawContours(
+        child_mask, [child_contour], -1, 255, thickness=cv2.FILLED, offset=offset
+    )
+    return parent_mask, child_mask
+
+
+def _is_stroke_ring(
+    parent_contour: np.ndarray,
+    child_contour: np.ndarray,
+    image_shape: tuple[int, int],
+    kernel_px: int,
+) -> bool:
+    """True if `child` is just the inner edge of the same drawn stroke as
+    `parent` (an unfilled outline's line thickness), rather than a real
+    material wall around a genuine hole."""
+    parent_mask, child_mask = _contour_pair_masks(
+        parent_contour, child_contour, image_shape, kernel_px + 2
+    )
+    wall = cv2.bitwise_and(parent_mask, cv2.bitwise_not(child_mask))
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (kernel_px * 2 + 1, kernel_px * 2 + 1)
+    )
+    eroded_wall = cv2.erode(wall, kernel)
+    return cv2.countNonZero(eroded_wall) == 0
+
+
+def prune_stroke_ring_artifacts(
+    contours: list[np.ndarray],
+    hierarchy: np.ndarray,
+    image_shape: tuple[int, int],
+    kernel_px: int,
+    min_residue_area: float,
+) -> list[np.ndarray]:
+    """Collapse redundant inner/outer edges of a single drawn stroke (typical
+    of unfilled, outline-style CAD line art) and drop tiny leftover specks
+    from stripped annotations, so each real feature keeps exactly one
+    contour and the material/void depth alternation the rest of the
+    pipeline relies on is restored."""
+    pruned = list(contours)
+    excluded: set[int] = set()
+    changed = True
+    while changed:
+        changed = False
+        for index, contour in enumerate(pruned):
+            if index in excluded or len(contour) < 3:
+                continue
+            parent = int(hierarchy[0, index, 3])
+            while parent in excluded:
+                parent = int(hierarchy[0, parent, 3])
+            area = cv2.contourArea(contour)
+            is_residue = area < min_residue_area
+            is_ring = (
+                not is_residue
+                and parent != -1
+                and _is_stroke_ring(pruned[parent], contour, image_shape, kernel_px)
+            )
+            if is_residue or is_ring:
+                for child_index in range(len(pruned)):
+                    if (
+                        child_index not in excluded
+                        and int(hierarchy[0, child_index, 3]) == index
+                    ):
+                        hierarchy[0, child_index, 3] = parent
+                excluded.add(index)
+                pruned[index] = np.empty((0, 1, 2), dtype=contour.dtype)
+                changed = True
+    return pruned
 
 
 def valid_contour_indices(contours: Sequence[np.ndarray]) -> list[int]:
@@ -176,7 +339,7 @@ def detect_calibration(
         if is_calibration_square(contours[index])
     ]
     if not matches:
-        raise RuntimeError("Lỗi: Không tìm thấy ô hiệu chuẩn 10x10 mm.")
+        raise RuntimeError("Error: No 10x10 mm calibration square found.")
     if len(matches) > 1:
         raise RuntimeError(MULTIPLE_CALIBRATION_ERROR)
 
@@ -184,7 +347,7 @@ def detect_calibration(
     _, _, width, _ = cv2.boundingRect(contours[calibration_index])
     scale_factor = width / CALIBRATION_SIZE_MM
     if not np.isfinite(scale_factor) or scale_factor <= 0:
-        raise RuntimeError("Lỗi: Scale Factor của ô hiệu chuẩn không hợp lệ.")
+        raise RuntimeError("Error: Invalid calibration square scale factor.")
     return calibration_index, scale_factor
 
 
@@ -194,7 +357,7 @@ def contour_depth(index: int, hierarchy: np.ndarray) -> int:
     visited: set[int] = set()
     while parent != -1:
         if parent in visited:
-            raise RuntimeError("Lỗi: Phát hiện vòng lặp không hợp lệ trong hierarchy.")
+            raise RuntimeError("Error: Detected an invalid loop in the contour hierarchy.")
         visited.add(parent)
         depth += 1
         parent = int(hierarchy[0, parent, 3])
@@ -218,7 +381,7 @@ def machining_origin(
 ) -> tuple[float, float]:
     if not contour_indices:
         raise RuntimeError(
-            "Lỗi: Không tìm thấy biên dạng gia công sau khi loại ô hiệu chuẩn."
+            "Error: No machining contours found after excluding the calibration square."
         )
 
     all_points = np.vstack(
@@ -264,7 +427,7 @@ def circle_geometry_mm(
     center_y = (y_max - center_y_px) / scale_factor
     radius = radius_px / scale_factor
     if not np.all(np.isfinite([center_x, center_y, radius])) or radius <= 0:
-        raise RuntimeError("Lỗi: Hình học đường tròn nhận dạng không hợp lệ.")
+        raise RuntimeError("Error: Invalid detected circle geometry.")
     return float(center_x), float(center_y), float(radius)
 
 
@@ -370,10 +533,13 @@ def generate_gcode(
 
 
 def convert_image_to_gcode(
-    input_path: Path, output_path: Path, config: MachiningConfig
+    input_path: Path,
+    output_path: Path,
+    config: MachiningConfig,
+    strip_dimensions: bool = False,
 ) -> tuple[float, int]:
     validate_config(config)
-    contours, hierarchy = extract_contours(input_path)
+    contours, hierarchy = extract_contours(input_path, strip_dimensions=strip_dimensions)
     valid_indices = valid_contour_indices(contours)
     calibration_index, scale_factor = detect_calibration(
         contours, valid_indices
@@ -401,15 +567,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         config = config_from_args(args)
         scale_factor, contour_count = convert_image_to_gcode(
-            args.input, args.output, config
+            args.input, args.output, config, strip_dimensions=args.strip_dimensions
         )
     except (OSError, RuntimeError, ValueError) as error:
         print(error, file=sys.stderr)
         return 1
 
-    print(f"Đã tạo G-code: {args.output}")
+    print(f"Generated G-code: {args.output}")
     print(f"Scale Factor: {scale_factor:.3f} pixel/mm")
-    print(f"Số contour gia công: {contour_count}")
+    print(f"Machining contours: {contour_count}")
     return 0
 
 
