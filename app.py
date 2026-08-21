@@ -58,7 +58,7 @@ GUI_DEFAULT_INPUT_PATH = APP_DIRECTORY / DEFAULT_INPUT_PATH
 GUI_DEFAULT_OUTPUT_PATH = APP_DIRECTORY / DEFAULT_OUTPUT_PATH
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 
-_GCODE_WORD_RE = re.compile(r"([A-Z])(-?\d+(?:\.\d+)?)")
+_GCODE_WORD_RE = re.compile(r"([A-Za-z])\s*([+-]?\d+(?:\.\d+)?)")
 
 Point = tuple[float, float]
 
@@ -97,11 +97,13 @@ def _arc_points(
 
     start_angle = math.atan2(start[1] - center_y, start[0] - center_x)
     end_angle = math.atan2(end[1] - center_y, end[0] - center_x)
-    if clockwise:
-        while end_angle > start_angle:
+    if math.hypot(end[0] - start[0], end[1] - start[1]) < 1e-9:
+        end_angle = start_angle - 2 * math.pi if clockwise else start_angle + 2 * math.pi
+    elif clockwise:
+        while end_angle >= start_angle:
             end_angle -= 2 * math.pi
     else:
-        while end_angle < start_angle:
+        while end_angle <= start_angle:
             end_angle += 2 * math.pi
 
     return [
@@ -123,17 +125,28 @@ def parse_toolpath_segments(gcode_text: str) -> list[Segment]:
         line = _strip_gcode_comment(raw_line)
         if not line:
             continue
-        words = dict(_GCODE_WORD_RE.findall(line))
-        if "G" in words:
-            g_value = int(float(words["G"]))
-            if g_value in (0, 1, 2, 3):
-                motion_mode = g_value
-        if "F" in words:
-            feed_rate = float(words["F"])
+        matches = _GCODE_WORD_RE.findall(line)
+        if not matches:
+            continue
 
-        new_x = float(words["X"]) if "X" in words else x
-        new_y = float(words["Y"]) if "Y" in words else y
-        if motion_mode is None or ("X" not in words and "Y" not in words):
+        line_words: dict[str, float] = {}
+        has_xy = False
+        for letter_str, value_str in matches:
+            letter = letter_str.upper()
+            val = float(value_str)
+            if letter == "G":
+                g_value = int(val)
+                if g_value in (0, 1, 2, 3):
+                    motion_mode = g_value
+            elif letter == "F":
+                feed_rate = val
+            elif letter in ("X", "Y"):
+                has_xy = True
+            line_words[letter] = val
+
+        new_x = line_words.get("X", x)
+        new_y = line_words.get("Y", y)
+        if motion_mode is None or not has_xy:
             x, y = new_x, new_y
             continue
 
@@ -142,8 +155,8 @@ def parse_toolpath_segments(gcode_text: str) -> list[Segment]:
         elif motion_mode == 1:
             segments.append(Segment("linear", [(x, y), (new_x, new_y)], feed_rate))
         else:
-            offset_i = float(words["I"]) if "I" in words else 0.0
-            offset_j = float(words["J"]) if "J" in words else 0.0
+            offset_i = line_words.get("I", 0.0)
+            offset_j = line_words.get("J", 0.0)
             points = _arc_points((x, y), (new_x, new_y), offset_i, offset_j, motion_mode == 2)
             kind = "arc_cw" if motion_mode == 2 else "arc_ccw"
             segments.append(Segment(kind, points, feed_rate))
@@ -175,7 +188,7 @@ def build_sim_timeline(segments: list[Segment]) -> tuple[list[Frame], float, flo
             else:
                 cut_distance += distance
             elapsed += (distance / feed) * 60.0
-            frames.append(Frame(elapsed, end_point[0], end_point[1], segment.kind, segment.feed))
+            frames.append(Frame(elapsed, end_point[0], end_point[1], segment.kind, feed))
     return frames, elapsed, cut_distance, rapid_distance
 
 

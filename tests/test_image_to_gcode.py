@@ -8,6 +8,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from app import (
+    RAPID_DISPLAY_FEED,
+    _arc_points,
+    build_sim_timeline,
+    parse_toolpath_segments,
+    sim_state_at_time,
+)
 from run import (
     CIRCULARITY_THRESHOLD,
     CONTOUR_SMOOTHING_EPSILON_RATIO,
@@ -26,6 +33,7 @@ from run import (
     main,
     order_contours_child_first,
     parse_args,
+    prune_stroke_ring_artifacts,
     smooth_contours,
     transform_contour,
     valid_contour_indices,
@@ -311,6 +319,44 @@ class ImageToGcodeTests(unittest.TestCase):
             self.assertEqual(2, contour_count)  # part outline + the one hole
             gcode = output_path.read_text(encoding="ascii")
             self.assertEqual(2, gcode.count("(Close contour)"))
+
+    def test_prune_stroke_ring_artifacts_handles_none_hierarchy(self) -> None:
+        res = prune_stroke_ring_artifacts([], None, (100, 100), 2, 16)
+        self.assertEqual([], res)
+
+    def test_arc_points_full_circle_360_degrees(self) -> None:
+        # Full 360-degree arc where start == end
+        points = _arc_points((10.0, 0.0), (10.0, 0.0), -10.0, 0.0, clockwise=True, segments=16)
+        self.assertEqual(17, len(points))
+        # Midpoint of 360 deg CW arc starting at (10,0) with center (0,0) should be around (-10, 0)
+        mid_x, mid_y = points[8]
+        self.assertAlmostEqual(-10.0, mid_x, places=3)
+        self.assertAlmostEqual(0.0, mid_y, places=3)
+
+    def test_parse_toolpath_segments_edge_cases(self) -> None:
+        gcode = (
+            "G00 X+10.0 Y 20.0\n"
+            "G01 X30.0 Y+20.0 F150.0\n"
+            "G02 X30.0 Y20.0 I -10.0 J 0.0\n"
+        )
+        segments = parse_toolpath_segments(gcode)
+        self.assertEqual(3, len(segments))
+        self.assertEqual("rapid", segments[0].kind)
+        self.assertEqual([(0.0, 0.0), (10.0, 20.0)], segments[0].points)
+        self.assertEqual("linear", segments[1].kind)
+        self.assertEqual(150.0, segments[1].feed)
+        self.assertEqual("arc_cw", segments[2].kind)
+
+    def test_build_sim_timeline_display_feed_for_rapids(self) -> None:
+        gcode = "G00 X10.0 Y0.0\nG01 X20.0 Y0.0 F100.0\n"
+        segments = parse_toolpath_segments(gcode)
+        frames, total_time, cut_dist, rapid_dist = build_sim_timeline(segments)
+        self.assertEqual(10.0, rapid_dist)
+        self.assertEqual(10.0, cut_dist)
+        # Check frame feed rates
+        rapid_frame_x, rapid_frame_y, rapid_kind, rapid_feed = sim_state_at_time(frames, frames[1].time * 0.5)
+        self.assertEqual("rapid", rapid_kind)
+        self.assertEqual(RAPID_DISPLAY_FEED, rapid_feed)
 
 
 if __name__ == "__main__":

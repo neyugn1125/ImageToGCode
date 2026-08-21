@@ -259,7 +259,7 @@ def _is_stroke_ring(
 
 def prune_stroke_ring_artifacts(
     contours: list[np.ndarray],
-    hierarchy: np.ndarray,
+    hierarchy: np.ndarray | None,
     image_shape: tuple[int, int],
     kernel_px: int,
     min_residue_area: float,
@@ -269,6 +269,9 @@ def prune_stroke_ring_artifacts(
     from stripped annotations, so each real feature keeps exactly one
     contour and the material/void depth alternation the rest of the
     pipeline relies on is restored."""
+    if hierarchy is None or not contours:
+        return list(contours)
+
     pruned = list(contours)
     excluded: set[int] = set()
     changed = True
@@ -429,16 +432,6 @@ def circle_geometry_mm(
     if not np.all(np.isfinite([center_x, center_y, radius])) or radius <= 0:
         raise RuntimeError("Error: Invalid detected circle geometry.")
     return float(center_x), float(center_y), float(radius)
-
-
-def contour_arc_command(points: np.ndarray) -> str:
-    """Preserve contour traversal direction after conversion to machine XY."""
-    x_values = points[:, 0]
-    y_values = points[:, 1]
-    signed_double_area = np.sum(
-        x_values * np.roll(y_values, -1) - np.roll(x_values, -1) * y_values
-    )
-    return "G03" if signed_double_area >= 0 else "G02"
 
 
 def _format_float(value: float) -> str:
