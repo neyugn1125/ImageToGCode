@@ -11,10 +11,10 @@ Công cụ chuyển ảnh raster 2D thành G-code Fanuc cho phay biên dạng CN
 - Tính scale factor theo công thức `SF = width_px / 10.0`.
 - Đặt gốc G54 tại góc dưới trái của bounding box chi tiết gia công.
 - Loại ô chuẩn khỏi bounding box và đường chạy dao.
-- Làm mượt contour bằng `cv2.approxPolyDP` với epsilon mặc định bằng `0.001 * perimeter`.
+- Làm mượt contour bằng `cv2.approxPolyDP` với epsilon mặc định bằng `0.005 * perimeter` để loại bỏ bậc pixel trên cạnh chéo; contour ô chuẩn được giữ nguyên để không ảnh hưởng hiệu chuẩn.
 - Sắp xếp contour theo hierarchy, gia công contour con trước contour cha.
 - Nhận dạng hình tròn bằng circularity `> 0.88`.
-- Sinh hai cung `G02` với I/J tương đối cho contour tròn, không nội suy hình tròn bằng hàng loạt G01.
+- Sinh hai cung `G02` hoặc `G03` với I/J tương đối theo chiều winding của contour cho contour tròn, không nội suy hình tròn bằng hàng loạt G01.
 - Sinh G01 cho các contour còn lại, đóng kín từng contour và retract sau mỗi đường chạy dao.
 - Kiểm tra tham số gia công trước khi xử lý.
 

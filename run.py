@@ -18,7 +18,10 @@ CALIBRATION_SIZE_MM = 10.0
 ASPECT_RATIO_TOLERANCE = 0.05
 MIN_CALIBRATION_SOLIDITY = 0.95
 CIRCULARITY_THRESHOLD = 0.88
-CONTOUR_SMOOTHING_EPSILON_RATIO = 0.001
+# Rasterized diagonal/curved edges can contain one-pixel stair steps.  A
+# slightly wider tolerance removes those steps without changing the intended
+# part vertices; the calibration contour is preserved separately below.
+CONTOUR_SMOOTHING_EPSILON_RATIO = 0.005
 DEFAULT_INPUT_PATH = Path("input") / "input.png"
 DEFAULT_OUTPUT_PATH = Path("output") / "output.nc"
 MIN_DIMENSION_RESIDUE_AREA_PX_FACTOR = 16
@@ -44,6 +47,7 @@ class MachiningConfig:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    defaults = MachiningConfig()
     parser = argparse.ArgumentParser(
         description=(
             "Convert a white-background 2D drawing image into Fanuc profile "
@@ -52,15 +56,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT_PATH)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
-    parser.add_argument("--cut-depth", type=float, default=-5.0)
-    parser.add_argument("--plunge-feed", type=float, default=100.0)
-    parser.add_argument("--cut-feed", type=float, default=300.0)
-    parser.add_argument("--spindle-speed", type=int, default=1500)
-    parser.add_argument("--safe-z", type=float, default=50.0)
-    parser.add_argument("--approach-z", type=float, default=2.0)
-    parser.add_argument("--tool-number", type=int, default=1)
-    parser.add_argument("--tool-offset", type=int, default=1)
-    parser.add_argument("--program-number", type=int, default=1000)
+    parser.add_argument("--cut-depth", type=float, default=defaults.cut_depth)
+    parser.add_argument("--plunge-feed", type=float, default=defaults.plunge_feed)
+    parser.add_argument("--cut-feed", type=float, default=defaults.cut_feed)
+    parser.add_argument("--spindle-speed", type=int, default=defaults.spindle_speed)
+    parser.add_argument("--safe-z", type=float, default=defaults.safe_z)
+    parser.add_argument("--approach-z", type=float, default=defaults.approach_z)
+    parser.add_argument("--tool-number", type=int, default=defaults.tool_number)
+    parser.add_argument("--tool-offset", type=int, default=defaults.tool_offset)
+    parser.add_argument("--program-number", type=int, default=defaults.program_number)
     parser.add_argument(
         "--strip-dimensions",
         action="store_true",
@@ -148,7 +152,7 @@ def extract_contours(
             cleaned, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
         )
         min_residue_area = (kernel_px**2) * MIN_DIMENSION_RESIDUE_AREA_PX_FACTOR
-        contours = prune_stroke_ring_artifacts(
+        contours, hierarchy = prune_stroke_ring_artifacts(
             contours, hierarchy, cleaned.shape, kernel_px, min_residue_area
         )
     else:
@@ -156,23 +160,39 @@ def extract_contours(
             binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
         )
 
-    contours = smooth_contours(contours)
+    # Keep calibration squares at their raster contour.  At larger smoothing
+    # tolerances, approxPolyDP may move their corners inward by a pixel and
+    # make the solidity check reject an otherwise valid calibration square.
+    calibration_candidates = [
+        index
+        for index, contour in enumerate(contours)
+        if len(contour) >= 3
+        and cv2.contourArea(contour) > 0
+        and is_calibration_square(contour)
+    ]
+    contours = smooth_contours(contours, preserve_indices=calibration_candidates)
     return contours, hierarchy
 
 
 def smooth_contours(
     contours: Sequence[np.ndarray],
     epsilon_ratio: float = CONTOUR_SMOOTHING_EPSILON_RATIO,
+    preserve_indices: Sequence[int] = (),
 ) -> list[np.ndarray]:
     """Reduce raster stair-stepping while retaining the original contour shape."""
     smoothed_contours: list[np.ndarray] = []
-    for contour in contours:
+    preserved = set(preserve_indices)
+    for index, contour in enumerate(contours):
+        if index in preserved:
+            smoothed_contours.append(contour)
+            continue
         if len(contour) < 3:
             # Degenerate placeholder left by prune_stroke_ring_artifacts, or a
             # stray raster speck; valid_contour_indices() filters these out.
             smoothed_contours.append(contour)
             continue
-        # 0.1% of the perimeter preserves curves while removing small pixel steps.
+        # 0.5% of the perimeter preserves intended vertices while removing
+        # small raster pixel steps.
         epsilon = epsilon_ratio * cv2.arcLength(contour, True)
         approx_contour = cv2.approxPolyDP(contour, epsilon, True)
         smoothed_contours.append(approx_contour)
@@ -259,45 +279,78 @@ def _is_stroke_ring(
 
 def prune_stroke_ring_artifacts(
     contours: list[np.ndarray],
-    hierarchy: np.ndarray,
+    hierarchy: np.ndarray | None,
     image_shape: tuple[int, int],
     kernel_px: int,
     min_residue_area: float,
-) -> list[np.ndarray]:
+) -> tuple[list[np.ndarray], np.ndarray]:
     """Collapse redundant inner/outer edges of a single drawn stroke (typical
     of unfilled, outline-style CAD line art) and drop tiny leftover specks
     from stripped annotations, so each real feature keeps exactly one
     contour and the material/void depth alternation the rest of the
     pipeline relies on is restored."""
-    pruned = list(contours)
-    excluded: set[int] = set()
+    if hierarchy is None:
+        return list(contours), np.empty((1, 0, 4), dtype=np.int32)
+    if hierarchy.ndim != 3 or hierarchy.shape != (1, len(contours), 4):
+        raise RuntimeError("Error: Invalid contour hierarchy shape.")
+
+    active = {
+        index
+        for index, contour in enumerate(contours)
+        if len(contour) >= 3 and cv2.contourArea(contour) > 0
+    }
+
+    def active_parent(index: int) -> int:
+        parent = int(hierarchy[0, index, 3])
+        visited: set[int] = set()
+        while parent != -1 and parent not in active:
+            if parent in visited:
+                raise RuntimeError(
+                    "Error: Detected an invalid loop in the contour hierarchy."
+                )
+            visited.add(parent)
+            parent = int(hierarchy[0, parent, 3])
+        return parent
+
     changed = True
     while changed:
         changed = False
-        for index, contour in enumerate(pruned):
-            if index in excluded or len(contour) < 3:
+        for index, contour in enumerate(contours):
+            if index not in active or len(contour) < 3:
                 continue
-            parent = int(hierarchy[0, index, 3])
-            while parent in excluded:
-                parent = int(hierarchy[0, parent, 3])
+            parent = active_parent(index)
             area = cv2.contourArea(contour)
             is_residue = area < min_residue_area
             is_ring = (
                 not is_residue
                 and parent != -1
-                and _is_stroke_ring(pruned[parent], contour, image_shape, kernel_px)
+                and _is_stroke_ring(contours[parent], contour, image_shape, kernel_px)
             )
             if is_residue or is_ring:
-                for child_index in range(len(pruned)):
-                    if (
-                        child_index not in excluded
-                        and int(hierarchy[0, child_index, 3]) == index
-                    ):
-                        hierarchy[0, child_index, 3] = parent
-                excluded.add(index)
-                pruned[index] = np.empty((0, 1, 2), dtype=contour.dtype)
+                active.remove(index)
                 changed = True
-    return pruned
+
+    kept_indices = [index for index in range(len(contours)) if index in active]
+    old_to_new = {old: new for new, old in enumerate(kept_indices)}
+    rebuilt = np.full((1, len(kept_indices), 4), -1, dtype=np.int32)
+    sibling_groups: dict[int, list[int]] = {}
+    for old_index in kept_indices:
+        new_index = old_to_new[old_index]
+        parent = active_parent(old_index)
+        new_parent = -1 if parent == -1 else old_to_new[parent]
+        rebuilt[0, new_index, 3] = new_parent
+        sibling_groups.setdefault(new_parent, []).append(new_index)
+
+    for parent, siblings in sibling_groups.items():
+        for position, child in enumerate(siblings):
+            rebuilt[0, child, 0] = (
+                siblings[position + 1] if position + 1 < len(siblings) else -1
+            )
+            rebuilt[0, child, 1] = siblings[position - 1] if position else -1
+        if parent != -1 and siblings:
+            rebuilt[0, parent, 2] = siblings[0]
+
+    return [contours[index] for index in kept_indices], rebuilt
 
 
 def valid_contour_indices(contours: Sequence[np.ndarray]) -> list[int]:
@@ -395,11 +448,15 @@ def machining_origin(
 def transform_contour(
     contour: np.ndarray, scale_factor: float, x_min: float, y_max: float
 ) -> np.ndarray:
+    if not np.isfinite(scale_factor) or scale_factor <= 1e-6:
+        raise RuntimeError("Error: Invalid or near-zero scale factor.")
     points = contour.reshape(-1, 2).astype(np.float64)
     transformed = np.empty_like(points)
     # G54 is placed at the bottom-left of the machining-contour bounding box.
     transformed[:, 0] = (points[:, 0] - x_min) / scale_factor
     transformed[:, 1] = (y_max - points[:, 1]) / scale_factor
+    if not np.all(np.isfinite(transformed)):
+        raise RuntimeError("Error: Converted contour coordinates are not finite.")
     return transformed
 
 
@@ -422,6 +479,8 @@ def circle_geometry_mm(
     contour: np.ndarray, scale_factor: float, x_min: float, y_max: float
 ) -> tuple[float, float, float]:
     """Fit an enclosing circle and transform its center/radius to G54 mm."""
+    if not np.isfinite(scale_factor) or scale_factor <= 1e-6:
+        raise RuntimeError("Error: Invalid or near-zero scale factor.")
     (center_x_px, center_y_px), radius_px = cv2.minEnclosingCircle(contour)
     center_x = (center_x_px - x_min) / scale_factor
     center_y = (y_max - center_y_px) / scale_factor
@@ -497,13 +556,14 @@ def generate_gcode(
             ]
         )
         if ideal_circle:
+            arc_command = contour_arc_command(points)
             opposite_x = center_x - radius
             lines.extend(
                 [
-                    f"G02 X{_format_float(opposite_x)} "
+                    f"{arc_command} X{_format_float(opposite_x)} "
                     f"Y{_format_float(center_y)} I{_format_float(-radius)} "
                     f"J0.000 F{cut_feed} (Circle half 1)",
-                    f"G02 X{_format_float(start_x)} "
+                    f"{arc_command} X{_format_float(start_x)} "
                     f"Y{_format_float(start_y)} I{_format_float(radius)} "
                     f"J0.000 F{cut_feed} (Close contour)",
                 ]

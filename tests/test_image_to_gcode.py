@@ -26,6 +26,7 @@ from run import (
     main,
     order_contours_child_first,
     parse_args,
+    prune_stroke_ring_artifacts,
     smooth_contours,
     transform_contour,
     valid_contour_indices,
@@ -95,7 +96,7 @@ class ImageToGcodeTests(unittest.TestCase):
         self.assertLess(contour_circularity(rectangle), CIRCULARITY_THRESHOLD)
         self.assertFalse(is_ideal_circle(rectangle))
 
-    def test_contour_smoothing_uses_point_one_percent_perimeter(self) -> None:
+    def test_contour_smoothing_uses_configured_epsilon(self) -> None:
         contour = make_circle_contour(radius=40.0)
         expected = cv2.approxPolyDP(
             contour,
@@ -108,6 +109,21 @@ class ImageToGcodeTests(unittest.TestCase):
         self.assertEqual(1, len(smoothed))
         np.testing.assert_array_equal(expected, smoothed[0])
         self.assertLessEqual(len(smoothed[0]), len(contour))
+
+    def test_bracket_tab_smooths_rasterized_triangle(self) -> None:
+        image_path = Path("input/samples/06_bracket_tab.png")
+
+        contours, _ = extract_contours(image_path)
+        valid = valid_contour_indices(contours)
+        calibration_index, _ = detect_calibration(contours, valid)
+        machining = [index for index in valid if index != calibration_index]
+        triangle_index = min(
+            machining, key=lambda index: contour_circularity(contours[index])
+        )
+
+        # The source triangle has raster stair steps, but its toolpath should
+        # contain the three intended vertices rather than every pixel step.
+        self.assertEqual(3, len(contours[triangle_index]))
 
     def test_ideal_circle_uses_two_half_circle_ij_arcs(self) -> None:
         circle = make_circle_contour(center=(50.0, 60.0), radius=20.0)
@@ -135,6 +151,57 @@ class ImageToGcodeTests(unittest.TestCase):
         self.assertIn(f"I-{expected_radius:.3f} J0.000", arc_lines[0])
         self.assertIn(f"I{expected_radius:.3f} J0.000", arc_lines[1])
         self.assertNotIn("G01 X", gcode)
+
+    def test_circle_arc_direction_follows_g54_winding(self) -> None:
+        circle = make_circle_contour(center=(50.0, 60.0), radius=20.0)[::-1]
+
+        gcode = generate_gcode(
+            [circle], [0], scale_factor=2.0, x_min=10.0, y_max=100.0,
+            config=MachiningConfig(),
+        )
+
+        arc_lines = [
+            line for line in gcode.splitlines() if line.startswith(("G02 ", "G03 "))
+        ]
+        self.assertEqual(2, len(arc_lines))
+        self.assertTrue(all(line.startswith("G03 ") for line in arc_lines))
+
+    def test_scale_factor_guards_reject_zero_and_nonfinite_values(self) -> None:
+        contour = make_circle_contour()
+        for scale_factor in (0.0, 1e-7, float("nan"), float("inf")):
+            with self.subTest(scale_factor=scale_factor):
+                with self.assertRaisesRegex(
+                    RuntimeError, "Invalid or near-zero scale factor"
+                ):
+                    transform_contour(contour, scale_factor, 0.0, 100.0)
+                with self.assertRaisesRegex(
+                    RuntimeError, "Invalid or near-zero scale factor"
+                ):
+                    circle_geometry_mm(contour, scale_factor, 0.0, 100.0)
+
+    def test_prune_rebuilds_contours_and_hierarchy_indices(self) -> None:
+        outer = np.array(
+            [[[0, 0]], [[100, 0]], [[100, 100]], [[0, 100]]], dtype=np.int32
+        )
+        invalid_parent = np.array([[[10, 10]], [[11, 11]]], dtype=np.int32)
+        child = np.array(
+            [[[20, 20]], [[40, 20]], [[40, 40]], [[20, 40]]], dtype=np.int32
+        )
+        contours = [outer, invalid_parent, child]
+        hierarchy = np.array(
+            [[[-1, -1, 1, -1], [2, -1, -1, 0], [-1, 1, -1, 1]]],
+            dtype=np.int32,
+        )
+
+        rebuilt_contours, rebuilt_hierarchy = prune_stroke_ring_artifacts(
+            contours, hierarchy, (120, 120), kernel_px=2, min_residue_area=0.0
+        )
+
+        self.assertEqual(2, len(rebuilt_contours))
+        self.assertEqual((1, 2, 4), rebuilt_hierarchy.shape)
+        self.assertEqual(0, int(rebuilt_hierarchy[0, 1, 3]))
+        self.assertEqual(-1, int(rebuilt_hierarchy[0, 0, 3]))
+        self.assertEqual(1, int(rebuilt_hierarchy[0, 0, 2]))
 
     def test_detects_scale_origin_and_child_first_order(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

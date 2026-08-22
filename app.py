@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import tempfile
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Callable, NamedTuple
@@ -897,12 +898,27 @@ class ImageToGCodeApp(ttk.Frame):
         self.sim_info_var.set("No simulation yet")
 
     def _load_toolpath(self, output_path: Path) -> None:
+        self.sim_info_var.set("Loading toolpath...")
+        worker = threading.Thread(
+            target=self._toolpath_worker,
+            args=(output_path,),
+            daemon=True,
+        )
+        worker.start()
+
+    def _toolpath_worker(self, output_path: Path) -> None:
         try:
             gcode_text = output_path.read_text(encoding="ascii")
-        except OSError:
+            segments = parse_toolpath_segments(gcode_text)
+        except (OSError, UnicodeError) as error:
+            self.result_queue.put(("toolpath_error", error))
             return
+
+        self.result_queue.put(("toolpath_ready", (output_path, segments)))
+
+    def _apply_toolpath(self, segments: list[Segment]) -> None:
         self._pause_sim_playback()
-        self._current_segments = parse_toolpath_segments(gcode_text)
+        self._current_segments = segments
         (
             self._sim_frames,
             self._sim_total_time,
@@ -942,8 +958,11 @@ class ImageToGCodeApp(ttk.Frame):
                     *flat,
                     fill=move_colors.get(kind, SIM_LINEAR_COLOR),
                     width=2,
-                    capstyle="round",
-                    joinstyle="round",
+                    # Each G-code move is rendered as its own line item. Flat
+                    # caps keep neighbouring moves from forming rounded
+                    # corners, while miter joins preserve sharp vertices.
+                    capstyle="butt",
+                    joinstyle="miter",
                 )
 
         start_x, start_y = to_canvas(segments[0].points[0])
@@ -971,8 +990,8 @@ class ImageToGCodeApp(ttk.Frame):
                     *flat_trail,
                     fill=SIM_TRAVELED_COLOR,
                     width=3,
-                    capstyle="round",
-                    joinstyle="round",
+                    capstyle="butt",
+                    joinstyle="miter",
                 )
             tool_cx, tool_cy = to_canvas((tool_x, tool_y))
             self.sim_canvas.create_oval(
@@ -1081,14 +1100,31 @@ class ImageToGCodeApp(ttk.Frame):
         config: MachiningConfig,
         strip_dimensions: bool,
     ) -> None:
+        temporary_path: Path | None = None
         try:
-            scale_factor, contour_count = convert_image_to_gcode(
-                input_path, output_path, config, strip_dimensions=strip_dimensions
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            fd, temporary_name = tempfile.mkstemp(
+                prefix=f".{output_path.name}.",
+                suffix=".tmp",
+                dir=str(output_path.parent),
             )
+            os.close(fd)
+            temporary_path = Path(temporary_name)
+            scale_factor, contour_count = convert_image_to_gcode(
+                input_path, temporary_path, config, strip_dimensions=strip_dimensions
+            )
+            os.replace(temporary_path, output_path)
+            temporary_path = None
         except Exception as error:  # Surface conversion errors in the GUI thread.
             self.result_queue.put(("error", error))
         else:
             self.result_queue.put(("success", (scale_factor, contour_count, output_path)))
+        finally:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink()
+                except FileNotFoundError:
+                    pass
 
     def _poll_results(self) -> None:
         try:
@@ -1100,6 +1136,11 @@ class ImageToGCodeApp(ttk.Frame):
         self._set_running(False)
         if result_type == "error":
             self._show_error(str(payload))
+        elif result_type == "toolpath_ready":
+            _output_path, segments = payload  # type: ignore[misc]
+            self._apply_toolpath(segments)  # type: ignore[arg-type]
+        elif result_type == "toolpath_error":
+            self._append_log(f"Unable to load toolpath simulation: {payload}")
         else:
             scale_factor, contour_count, output_path = payload  # type: ignore[misc]
             self.status_var.set("G-code generated successfully")
