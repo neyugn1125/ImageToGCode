@@ -64,6 +64,19 @@ def write_dimensioned_test_image(path: Path) -> None:
         raise RuntimeError(f"Could not create test image: {path}")
 
 
+def write_filled_dimension_extension_image(path: Path) -> None:
+    """A filled plate with an extension line joined to its left boundary."""
+    image = np.full((360, 400, 3), 255, dtype=np.uint8)
+    cv2.rectangle(image, (20, 20), (69, 69), (0, 0, 0), -1)
+    cv2.rectangle(image, (100, 80), (300, 260), (0, 0, 0), -1)
+    cv2.circle(image, (200, 170), 35, (255, 255, 255), -1)
+    # Three pixels is a common result after anti-aliased source artwork is
+    # thresholded; it must still be treated as an annotation, not part stock.
+    cv2.line(image, (100, 20), (100, 79), (0, 0, 0), 3)
+    if not cv2.imwrite(str(path), image):
+        raise RuntimeError(f"Could not create test image: {path}")
+
+
 def make_circle_contour(
     center: tuple[float, float] = (50.0, 50.0), radius: float = 20.0
 ) -> np.ndarray:
@@ -378,6 +391,44 @@ class ImageToGcodeTests(unittest.TestCase):
             self.assertEqual(2, contour_count)  # part outline + the one hole
             gcode = output_path.read_text(encoding="ascii")
             self.assertEqual(2, gcode.count("(Close contour)"))
+
+    def test_gold_drawing_strips_dimensions_to_part_contours(self) -> None:
+        """The repository's dimensioned reference drawing keeps only the
+        outer profile and its three real slot contours."""
+        image_path = Path("input/gold.png")
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "gold.nc"
+            scale_factor, contour_count = convert_image_to_gcode(
+                image_path,
+                output_path,
+                MachiningConfig(),
+                strip_dimensions=True,
+            )
+
+            self.assertAlmostEqual(4.9, scale_factor, places=6)
+            self.assertEqual(4, contour_count)
+            gcode = output_path.read_text(encoding="ascii")
+            self.assertEqual(4, gcode.count("(Close contour)"))
+            self.assertNotIn("nan", gcode.lower())
+            self.assertNotIn("inf", gcode.lower())
+
+    def test_strip_dimensions_removes_extension_joined_to_filled_part(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = Path(directory) / "filled-extension.png"
+            write_filled_dimension_extension_image(image_path)
+
+            contours, _ = extract_contours(image_path, strip_dimensions=True)
+            valid = valid_contour_indices(contours)
+            calibration_index, _ = detect_calibration(contours, valid)
+            machining = [index for index in valid if index != calibration_index]
+            outer = max(machining, key=lambda index: cv2.contourArea(contours[index]))
+            _x, y, _width, height = cv2.boundingRect(contours[outer])
+
+            # The line starts at y=20 and touches the plate at y=80.  It must
+            # not enlarge the machining contour beyond the filled rectangle.
+            self.assertGreaterEqual(y, 78)
+            self.assertLessEqual(y + height, 264)
+            self.assertEqual(2, len(machining))
 
 
 if __name__ == "__main__":

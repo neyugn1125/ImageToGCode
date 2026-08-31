@@ -25,6 +25,14 @@ CONTOUR_SMOOTHING_EPSILON_RATIO = 0.005
 DEFAULT_INPUT_PATH = Path("input") / "input.png"
 DEFAULT_OUTPUT_PATH = Path("output") / "output.nc"
 MIN_DIMENSION_RESIDUE_AREA_PX_FACTOR = 16
+CALIBRATION_AREA_OUTLIER_FACTOR = 8.0
+# An opening kernel larger than this can erase acute corners from a rasterized
+# outline.  The core reconstruction below handles solid artwork separately,
+# so dimension stripping can stay conservative for line-art profiles.
+MAX_DIMENSION_OPEN_KERNEL_PX = 7
+# Four-pixel rasterized annotations need a slightly larger core to disconnect
+# them from a filled boundary; this still preserves the broad solid regions.
+SOLID_CORE_KERNEL_PX = 9
 MULTIPLE_CALIBRATION_ERROR = (
     "Error: Detected more than 1 calibration square. Please remove the "
     "duplicate squares or change the part geometry to avoid ambiguity."
@@ -147,7 +155,24 @@ def extract_contours(
             sample_binary, raw_contours, calibration_index, 0, thickness=cv2.FILLED
         )
         kernel_px = dimension_stroke_kernel_px(sample_binary)
-        cleaned = remove_dimension_annotations(binary, kernel_px)
+        radii = _stroke_ridge_radii(sample_binary)
+        if radii.size and float(np.max(radii)) > 12.0:
+            # A thin extension touching a filled part survives a normal
+            # opening because the junction is supported by the part interior.
+            # Erode first, keep only the resulting material cores, and dilate
+            # each core back independently; annotation branches then have no
+            # core to reconstruct while the part silhouette is retained.
+            cleaned = _reconstruct_thick_components(
+                binary,
+                raw_contours[calibration_index],
+                SOLID_CORE_KERNEL_PX,
+            )
+        else:
+            cleaned = remove_dimension_annotations(binary, kernel_px)
+        if kernel_px >= 3:
+            cleaned = _trim_dimension_extent(
+                cleaned, raw_contours[calibration_index], kernel_px
+            )
         contours, hierarchy = cv2.findContours(
             cleaned, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
         )
@@ -163,13 +188,29 @@ def extract_contours(
     # Keep calibration squares at their raster contour.  At larger smoothing
     # tolerances, approxPolyDP may move their corners inward by a pixel and
     # make the solidity check reject an otherwise valid calibration square.
-    calibration_candidates = [
-        index
-        for index, contour in enumerate(contours)
-        if len(contour) >= 3
-        and cv2.contourArea(contour) > 0
-        and is_calibration_square(contour)
-    ]
+    if strip_dimensions:
+        # Dimension stripping can temporarily turn a large square plate's
+        # outline into a solid-looking square contour.  Preserve only the
+        # small reference marker; the plate itself should still be smoothed
+        # so annotation-induced stair steps do not enter the toolpath.
+        stripped_valid = valid_contour_indices(contours)
+        try:
+            stripped_calibration, _ = detect_calibration(
+                contours,
+                stripped_valid,
+                ignore_large_outliers=True,
+            )
+            calibration_candidates = [stripped_calibration]
+        except RuntimeError:
+            calibration_candidates = []
+    else:
+        calibration_candidates = [
+            index
+            for index, contour in enumerate(contours)
+            if len(contour) >= 3
+            and cv2.contourArea(contour) > 0
+            and is_calibration_square(contour)
+        ]
     contours = smooth_contours(contours, preserve_indices=calibration_candidates)
     return contours, hierarchy
 
@@ -217,6 +258,12 @@ def dimension_stroke_kernel_px(binary: np.ndarray) -> int:
     radii = _stroke_ridge_radii(binary)
     if radii.size == 0:
         return 2
+    # Filled raster artwork has very large distance-transform ridges inside
+    # its material regions. Those are not drafting stroke widths; use the
+    # smallest useful opening kernel so stripping stays harmless for solid
+    # sample drawings while still removing one-pixel annotations.
+    if float(np.max(radii)) > 12.0:
+        return 2
     scaled = np.clip(radii / max(radii.max(), 1e-6) * 255, 0, 255).astype(np.uint8)
     threshold_scaled, _ = cv2.threshold(
         scaled, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
@@ -224,7 +271,10 @@ def dimension_stroke_kernel_px(binary: np.ndarray) -> int:
     threshold_radius = threshold_scaled / 255.0 * radii.max()
     # +1px margin: the Otsu split sits right at the annotation stroke's own
     # width, which isn't quite enough to fully erase it.
-    return max(2, int(round(threshold_radius * 2)) + 1)
+    return min(
+        MAX_DIMENSION_OPEN_KERNEL_PX,
+        max(2, int(round(threshold_radius * 2)) + 1),
+    )
 
 
 def remove_dimension_annotations(binary: np.ndarray, kernel_px: int) -> np.ndarray:
@@ -232,6 +282,139 @@ def remove_dimension_annotations(binary: np.ndarray, kernel_px: int) -> np.ndarr
     thinner than the part outline strokes, leaving only the part geometry."""
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_px, kernel_px))
     return cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+
+
+def _reconstruct_thick_components(
+    binary: np.ndarray,
+    calibration_contour: np.ndarray,
+    core_kernel_px: int,
+) -> np.ndarray:
+    """Remove thin branches attached to filled material regions.
+
+    A connected annotation line can survive an opening at its junction with a
+    solid part.  Erosion disconnects that line from the part; reconstructing
+    only the surviving eroded components removes the branch without clipping
+    the rest of the silhouette.  The calibration marker is restored after the
+    reconstruction because it is intentionally excluded from machining.
+    """
+    work = binary.copy()
+    cv2.drawContours(work, [calibration_contour], -1, 0, thickness=cv2.FILLED)
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (core_kernel_px, core_kernel_px)
+    )
+    eroded = cv2.erode(work, kernel)
+    labels_count, labels, stats, _ = cv2.connectedComponentsWithStats(eroded)
+    reconstructed = np.zeros_like(binary)
+    minimum_core_area = max(core_kernel_px * core_kernel_px * 2, 20)
+    for label in range(1, labels_count):
+        if int(stats[label, cv2.CC_STAT_AREA]) < minimum_core_area:
+            continue
+        component = np.where(labels == label, 255, 0).astype(np.uint8)
+        reconstructed = cv2.bitwise_or(
+            reconstructed, cv2.dilate(component, kernel)
+        )
+    cv2.drawContours(
+        reconstructed, [calibration_contour], -1, 255, thickness=cv2.FILLED
+    )
+    return reconstructed
+
+
+def _trim_dimension_extent(
+    binary: np.ndarray,
+    calibration_contour: np.ndarray,
+    kernel_px: int,
+) -> np.ndarray:
+    """Clip annotation strokes that remain connected to the part boundary.
+
+    Opening removes most thin dimensions, but a line that touches a thick
+    outline can survive at the junction and enlarge the external contour.
+    A large parent/child contour pair with a nearly identical horizontal span
+    identifies the inner edge of that outline; use it as the machining extent
+    and retain a small stroke-width margin around it.
+    """
+    provisional, hierarchy = cv2.findContours(
+        binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+    )
+    if hierarchy is None:
+        return binary
+
+    candidates: list[tuple[float, int]] = []
+    span_tolerance = max(kernel_px * 4, 8)
+    for child_index, child in enumerate(provisional):
+        if len(child) < 3 or cv2.contourArea(child) <= 0:
+            continue
+        parent_index = int(hierarchy[0, child_index, 3])
+        if parent_index == -1:
+            continue
+        parent = provisional[parent_index]
+        if len(parent) < 3 or cv2.contourArea(parent) <= 0:
+            continue
+        parent_x, parent_y, parent_w, parent_h = cv2.boundingRect(parent)
+        child_x, child_y, child_w, child_h = cv2.boundingRect(child)
+        parent_area = abs(cv2.contourArea(parent))
+        child_area = abs(cv2.contourArea(child))
+        left_margin = child_x - parent_x
+        right_margin = (parent_x + parent_w) - (child_x + child_w)
+        top_margin = child_y - parent_y
+        bottom_margin = (parent_y + parent_h) - (child_y + child_h)
+        same_horizontal_span = (
+            abs(parent_w - child_w) <= span_tolerance
+            and abs(parent_x - child_x) <= span_tolerance
+        )
+        same_vertical_span = (
+            abs(parent_h - child_h) <= span_tolerance
+            and abs(parent_y - child_y) <= span_tolerance
+        )
+        has_one_sided_extension = (
+            abs(parent_h - child_h) > max(span_tolerance * 2, 16)
+            or abs(parent_w - child_w) > max(span_tolerance * 2, 16)
+            or (same_horizontal_span and top_margin > bottom_margin + 1)
+            or (same_horizontal_span and bottom_margin > top_margin + 1)
+            or (same_vertical_span and left_margin > right_margin + 1)
+            or (same_vertical_span and right_margin > left_margin + 1)
+        )
+        if (
+            (same_horizontal_span or same_vertical_span)
+            and parent_area > 0
+            and child_area / parent_area >= 0.5
+            and has_one_sided_extension
+        ):
+            candidates.append((child_area, child_index))
+
+    if not candidates:
+        return binary
+
+    _area, inner_index = max(candidates)
+    x, y, width, height = cv2.boundingRect(provisional[inner_index])
+    parent_index = int(hierarchy[0, inner_index, 3])
+    parent_x, parent_y, parent_w, parent_h = cv2.boundingRect(
+        provisional[parent_index]
+    )
+    left_margin = x - parent_x
+    right_margin = (parent_x + parent_w) - (x + width)
+    top_margin = y - parent_y
+    bottom_margin = (parent_y + parent_h) - (y + height)
+    # The smaller margin on the stable axis is the actual outline half-width;
+    # use it on both axes so a one-sided extension cannot expand the clip box.
+    if (
+        abs(parent_w - width) <= span_tolerance
+        and abs(parent_x - x) <= span_tolerance
+    ):
+        stable_margin = min(left_margin, right_margin)
+    else:
+        stable_margin = min(top_margin, bottom_margin)
+    margin = max(int(stable_margin), max(kernel_px - 1, 3))
+    x0 = max(x - margin, 0)
+    y0 = max(y - margin, 0)
+    x1 = min(x + width + margin, binary.shape[1])
+    y1 = min(y + height + margin, binary.shape[0])
+    clipped = np.zeros_like(binary)
+    clipped[y0:y1, x0:x1] = binary[y0:y1, x0:x1]
+    # The calibration square is intentionally outside the machining extent;
+    # restore it after clipping so scale detection still sees exactly one
+    # reference contour.
+    cv2.drawContours(clipped, [calibration_contour], -1, 255, thickness=cv2.FILLED)
+    return clipped
 
 
 def _contour_pair_masks(
@@ -266,6 +449,29 @@ def _is_stroke_ring(
     """True if `child` is just the inner edge of the same drawn stroke as
     `parent` (an unfilled outline's line thickness), rather than a real
     material wall around a genuine hole."""
+    # When a dimension/extension line touches an outline, the external
+    # contour can enclose the complete drawing (including slot voids).  In
+    # that case the filled-mask wall test below sees all of those voids as a
+    # thick wall and misses the fact that `child` is simply the inner edge of
+    # the same drawn stroke.  Nearly coincident bounding boxes are a stronger
+    # signal for this specific ring relationship; genuine holes are normally
+    # substantially smaller than their parent contour.
+    parent_x, parent_y, parent_w, parent_h = cv2.boundingRect(parent_contour)
+    child_x, child_y, child_w, child_h = cv2.boundingRect(child_contour)
+    span_tolerance = max(kernel_px * 4, 8)
+    parent_area = abs(cv2.contourArea(parent_contour))
+    child_area = abs(cv2.contourArea(child_contour))
+    # A touching annotation can extend the parent in only one direction, so
+    # compare the stable horizontal span and area rather than requiring both
+    # bounding-box dimensions to match exactly.
+    if (
+        abs(parent_w - child_w) <= span_tolerance
+        and abs(parent_x - child_x) <= span_tolerance
+        and parent_area > 0
+        and child_area / parent_area >= 0.5
+    ):
+        return True
+
     parent_mask, child_mask = _contour_pair_masks(
         parent_contour, child_contour, image_shape, kernel_px + 2
     )
@@ -384,7 +590,10 @@ def is_calibration_square(contour: np.ndarray) -> bool:
 
 
 def detect_calibration(
-    contours: Sequence[np.ndarray], candidate_indices: Sequence[int]
+    contours: Sequence[np.ndarray],
+    candidate_indices: Sequence[int],
+    *,
+    ignore_large_outliers: bool = False,
 ) -> tuple[int, float]:
     matches = [
         index
@@ -393,6 +602,17 @@ def detect_calibration(
     ]
     if not matches:
         raise RuntimeError("Error: No 10x10 mm calibration square found.")
+    if len(matches) > 1 and ignore_large_outliers:
+        areas = sorted(
+            ((abs(cv2.contourArea(contours[index])), index) for index in matches),
+            key=lambda item: item[0],
+        )
+        smallest_area, smallest_index = areas[0]
+        if all(
+            area > smallest_area * CALIBRATION_AREA_OUTLIER_FACTOR
+            for area, _index in areas[1:]
+        ):
+            matches = [smallest_index]
     if len(matches) > 1:
         raise RuntimeError(MULTIPLE_CALIBRATION_ERROR)
 
@@ -602,7 +822,9 @@ def convert_image_to_gcode(
     contours, hierarchy = extract_contours(input_path, strip_dimensions=strip_dimensions)
     valid_indices = valid_contour_indices(contours)
     calibration_index, scale_factor = detect_calibration(
-        contours, valid_indices
+        contours,
+        valid_indices,
+        ignore_large_outliers=strip_dimensions,
     )
     machining_indices = [
         index for index in valid_indices if index != calibration_index
