@@ -1,3 +1,20 @@
-/cnc.md
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Output directories
+output/*
+!output/.gitkeep
+*.tmp
+
+# IDE / OS / Documentation
+.vscode/
+.idea/
+.DS_Store
+/cnc.md

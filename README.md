@@ -1,36 +1,46 @@
-# Image to G-Code
+# Image/DXF to G-Code
 
-Công cụ chuyển ảnh raster 2D thành G-code Fanuc cho phay biên dạng CNC. Ứng dụng hỗ trợ cả dòng lệnh Python và giao diện GUI trên Windows.
+Công cụ chuyển ảnh raster 2D hoặc bản vẽ DXF thành G-code Fanuc cho phay biên
+dạng CNC. CLI dùng pipeline hai giai đoạn `Image -> DXF -> G-Code`; ứng dụng
+vẫn hỗ trợ giao diện GUI trên Windows cho luồng ảnh.
 
 > **Cảnh báo:** Hãy mô phỏng hoặc dry-run chương trình trên controller trước khi chạy máy thật. Phần mềm chưa áp dụng bù bán kính dao, bù kerf, chia nhiều lớp chiều sâu hoặc kiểm tra va chạm.
 
 ## Tính năng
 
-- Đọc ảnh PNG, JPG, JPEG, BMP, TIFF.
-- Tự động phát hiện ô vuông chuẩn màu đen 10 x 10 mm.
-- Tính scale factor theo công thức `SF = width_px / 10.0`.
+- Đọc ảnh PNG, JPG, JPEG, BMP, TIFF hoặc nhận trực tiếp file DXF.
+- Tự động phát hiện ô vuông chuẩn rỗng 10 x 10 mm theo quy tắc góc dưới trái
+  (`min(x - y)`). Ảnh cũ dùng ô chuẩn đen đặc vẫn được hỗ trợ.
+- Bù độ dày nét ô chuẩn theo
+  `true_width_px = (w_outer + w_inner) / 2.0`, sau đó tính
+  `SF = true_width_px / 10.0`.
 - Đặt gốc G54 tại góc dưới trái của bounding box chi tiết gia công.
 - Loại ô chuẩn khỏi bounding box và đường chạy dao.
-- Làm mượt contour bằng `cv2.approxPolyDP` với epsilon mặc định bằng `0.005 * perimeter` để loại bỏ bậc pixel trên cạnh chéo; contour ô chuẩn được giữ nguyên để không ảnh hưởng hiệu chuẩn.
+- Làm mượt contour bằng `cv2.approxPolyDP` với epsilon mặc định bằng `0.005 * perimeter` để loại bỏ bậc pixel trên cạnh chéo; với contour cong dài, epsilon được giới hạn ở 1 pixel để tránh tạo các đoạn thẳng thô. Contour ô chuẩn được giữ nguyên để không ảnh hưởng hiệu chuẩn.
 - Sắp xếp contour theo hierarchy, gia công contour con trước contour cha.
 - Nhận dạng hình tròn bằng circularity `> 0.88`.
-- Sinh hai cung `G02` hoặc `G03` với I/J tương đối theo chiều winding của contour cho contour tròn, không nội suy hình tròn bằng hàng loạt G01.
-- Sinh G01 cho các contour còn lại, đóng kín từng contour và retract sau mỗi đường chạy dao.
+- Xuất DXF theo đơn vị millimeter với entity `CIRCLE` hoặc `LWPOLYLINE` đóng.
+- Sinh đúng hai cung 180 độ `G02` với I/J tương đối cho mỗi `CIRCLE`, tránh
+  lỗi nội suy full-circle trên controller.
+- Sinh `G01` theo từng đỉnh `LWPOLYLINE`, luôn thêm lệnh quay về điểm đầu và
+  retract sau mỗi đường chạy dao.
+- Tạo thư mục riêng cho mỗi lần chạy theo mẫu
+  `output/<filename>_<YYYYMMDD_HHMMSS>/`, chứa cả `.dxf` và `.nc`.
 - Kiểm tra tham số gia công trước khi xử lý.
+- Hỗ trợ scale tường minh cho ảnh không có metadata bằng kích thước tham chiếu
+  hoặc `pixels per mm`; không tự suy đoán DPI vì DPI không cho biết kích thước
+  chi tiết nếu ảnh đã bị resize.
+- Có thể loại nét kích thước, đường dóng, mũi tên và chữ bằng
+  `--strip-dimensions` trước khi lấy contour.
 
 ## Pipeline xử lý
 
 ```text
-Ảnh đầu vào
-    -> grayscale
-    -> Gaussian Blur 5x5
-    -> Otsu THRESH_BINARY_INV
-    -> RETR_TREE / CHAIN_APPROX_SIMPLE
-    -> làm mượt contour
-    -> tìm ô chuẩn 10 x 10 mm
-    -> tính SF và gốc G54
-    -> nhận dạng hình tròn hoặc contour thường
-    -> sinh G-code Fanuc
+Ảnh -> OpenCV/approxPolyDP -> hiệu chuẩn + đổi trục Y -> DXF millimeter
+DXF đầu vào -----------------------------------------> sao chép DXF
+                                                        |
+                                                        v
+                             ezdxf -> CIRCLE/LWPOLYLINE -> G-code Fanuc
 ```
 
 Với contour tròn, chương trình dùng `cv2.minEnclosingCircle()` để lấy tâm và bán kính. Tọa độ được đổi sang mm theo:
@@ -41,13 +51,15 @@ Y_mm = (y_max - Y_px) / SF
 R_mm = R_px / SF
 ```
 
-Hai cung 180 độ dùng I/J là vector tương đối từ điểm bắt đầu đến tâm cung. Contour chuẩn không xuất hiện trong G-code.
+Hai cung 180 độ dùng I/J là vector tương đối từ điểm bắt đầu đến tâm cung.
+Contour chuẩn không xuất hiện trong DXF hoặc G-code.
 
 ## Yêu cầu hệ thống
 
 - Python 3.10 trở lên.
 - OpenCV-Python.
 - NumPy.
+- ezdxf.
 - Tkinter nếu chạy giao diện GUI. Trên Windows, Tkinter thường đi kèm Python.
 
 ## Cài đặt
@@ -82,11 +94,44 @@ python -m pip install -r requirements.txt
 
 Ảnh cần có:
 
-1. Một ô vuông đen đặc, song song với trục ảnh, đại diện cho kích thước 10 x 10 mm.
+1. Một ô vuông rỗng, song song với trục ảnh, đại diện cho kích thước 10 x 10 mm.
 2. Một hoặc nhiều hình chi tiết cần gia công.
 3. Nền sáng, tương phản rõ với chi tiết.
 
-Chỉ nên có một ô vuông phù hợp với điều kiện hiệu chuẩn. Nếu có nhiều ô vuông, chương trình dừng và báo lỗi để tránh chọn sai scale factor. Không đặt các hình vuông gia công có cùng đặc điểm với ô chuẩn nếu chúng có thể bị nhận dạng nhầm.
+Nếu có nhiều ô vuông rỗng phù hợp, chương trình chọn ô nằm dưới-trái nhất theo
+điểm số `x - y`. Độ rộng centerline của nét được dùng để loại sai số do độ dày
+nét. Với ảnh cũ dùng ô chuẩn đen đặc, `black ratio` vẫn phân biệt ô chuẩn với
+hình vuông chỉ vẽ biên.
+
+### Ảnh không có metadata hoặc ô chuẩn
+
+Một ảnh raster không chứa thông tin kích thước vật lý thì không thể tự suy ra
+scale tuyệt đối từ số pixel. Chọn một trong các cách sau:
+
+```bash
+# Biết kích thước bao gia công theo cả hai chiều (mm)
+python run.py --input drawings/part.png --output-dir output \
+  --reference-width-mm 100 --reference-height-mm 100
+
+# Hoặc biết trực tiếp độ phân giải raster
+python run.py --input drawings/part.png --output-dir output \
+  --pixels-per-mm 16.54
+```
+
+Có thể chỉ cung cấp một chiều `--reference-width-mm` hoặc
+`--reference-height-mm`; khi cung cấp cả hai, hai tỉ lệ phải khớp trong phạm
+vi 5%. `--pixels-per-mm` không dùng đồng thời với kích thước tham chiếu.
+Thứ tự ưu tiên là `pixels per mm`, kích thước tham chiếu, metadata vector
+diagrams.net, rồi ô vuông 10 x 10 mm. Nếu không có bất kỳ nguồn scale nào,
+chương trình dừng với lỗi rõ ràng và không tạo file G-code.
+
+Với bản vẽ có đường kích thước/chữ, bật tùy chọn sau và vẫn cung cấp kích
+thước thật của chi tiết:
+
+```bash
+python run.py --input drawings/part.png --output-dir output \
+  --reference-width-mm 100 --reference-height-mm 100 --strip-dimensions
+```
 
 ## Chạy bằng CLI
 
@@ -96,14 +141,20 @@ Chỉ nên có một ô vuông phù hợp với điều kiện hiệu chuẩn. N
 python run.py
 ```
 
-File mặc định được tạo tại `output/output.nc`.
+Mỗi lần chạy tạo một thư mục mới, ví dụ:
+
+```text
+output/input_20260823_143015/
+├── input.dxf
+└── input.nc
+```
 
 Các tham số CLI:
 
 | Tham số | Mặc định | Mô tả |
 | --- | ---: | --- |
-| `--input` | `input/input.png` | Ảnh đầu vào |
-| `--output` | `output/output.nc` | File G-code đầu ra |
+| `--input` | `input/input.png` | Ảnh hoặc DXF đầu vào |
+| `--output-dir` | `output` | Thư mục gốc chứa các thư mục lần chạy |
 | `--cut-depth` | `-5.0` | Chiều sâu cắt Z, phải âm |
 | `--plunge-feed` | `100.0` | Feed khi plunge, mm/min |
 | `--cut-feed` | `300.0` | Feed khi cắt, mm/min |
@@ -113,26 +164,24 @@ Các tham số CLI:
 | `--tool-number` | `1` | Số dao |
 | `--tool-offset` | `1` | Offset chiều dài dao H |
 | `--program-number` | `1000` | Số chương trình Fanuc |
-| `--strip-dimensions` | tắt | Loại bỏ đường kích thước, đường gióng, mũi tên và chữ số đo trước khi dò contour (xem [Loại bỏ số đo kích thước](#loại-bỏ-số-đo-kích-thước)) |
+| `--reference-width-mm` | *(trống)* | Chiều rộng bao gia công đã biết, mm |
+| `--reference-height-mm` | *(trống)* | Chiều cao bao gia công đã biết, mm |
+| `--pixels-per-mm` | *(trống)* | Scale raster tường minh, ưu tiên cao nhất |
+| `--strip-dimensions` | tắt | Loại bỏ đường kích thước, đường gióng, mũi tên và chữ số đo trước khi tracing |
 
-Ví dụ ghi output sang vị trí khác:
+`--output` là alias của `--output-dir` để tương thích câu lệnh cũ. Ví dụ chạy
+từ ảnh và ghi artifact sang thư mục khác:
 
 ```bash
-python run.py --input drawings/part.png --output nc/part.nc --cut-depth -2.5 --cut-feed 250 --spindle-speed 2200
+python run.py --input drawings/part.png --output-dir nc --cut-depth -2.5 --cut-feed 250 --spindle-speed 2200
 ```
 
-## Loại bỏ số đo kích thước
+Đầu vào DXF đi thẳng tới post-processor và bản gốc được sao chép vào thư mục
+lần chạy:
 
-Bản vẽ CAD xuất ra thường có kèm đường kích thước, đường gióng, mũi tên và chữ số đo (vd. `100`, `Ø10`) đè lên biên dạng chi tiết — nếu dò contour trực tiếp trên ảnh này, các đường đó sẽ bị nhận nhầm thành đường chạy dao, hoặc dính liền vào biên dạng chi tiết làm sai contour.
-
-Bật `--strip-dimensions` (CLI) hoặc tick ô "Remove dimension annotations" (GUI) để chương trình:
-
-1. Tự động ước lượng độ dày nét vẽ biên dạng chi tiết so với nét kích thước (dựa trên quy ước ISO 128: đường bao thấy được luôn được vẽ đậm hơn đường kích thước), rồi loại bỏ mọi nét mỏng hơn ngưỡng đó.
-2. Gộp lại cặp đường viền trong/ngoài mà một số bản vẽ dạng nét (không tô đặc) để lại sau khi vẽ biên dạng bằng một nét đơn, để mỗi biên dạng thật (đường bao ngoài, mỗi lỗ) chỉ còn đúng một contour.
-
-Tính năng này hoạt động với cả ảnh chi tiết tô đặc (như các ảnh mẫu trong `input/samples/`) và ảnh dạng nét vẽ kỹ thuật không tô đặc. Vì ngưỡng được ước lượng riêng theo từng ảnh, chỉ nên bật khi ảnh thực sự có đường kích thước cần loại bỏ — bật nhầm trên ảnh chi tiết tô đặc có thể xoá luôn các chi tiết nhỏ. Ô vuông hiệu chuẩn 10 x 10 mm luôn được giữ nguyên bất kể tuỳ chọn này.
-
-Lưu ý: biên dạng tròn được dò từ nét vẽ (không tô đặc) đôi khi không đạt ngưỡng circularity `> 0.88` do nét vẽ kém mượt hơn hình tô đặc, nên sẽ được xuất bằng chuỗi `G01` thay vì cung `G02`/`G03` — đường cắt vẫn đúng hình dạng, chỉ khác lệnh G-code.
+```bash
+python run.py --input drawings/part.dxf --output-dir output
+```
 
 ## Chạy giao diện GUI
 
@@ -145,7 +194,11 @@ Trong cửa sổ ứng dụng:
 1. Nhấn **Browse** ở mục Input image và chọn ảnh trực tiếp.
 2. Chọn tên file G-code ở mục Output G-code.
 3. Nhập thông số dao và thông số gia công.
-4. Nhấn **Generate G-Code**.
+4. Nếu ảnh không có ô chuẩn hoặc metadata, nhập Reference width/height (mm)
+   hoặc Pixels per mm trong panel **Scale reference**. Hai cách này không dùng
+   đồng thời.
+5. Với bản vẽ có chú thích kích thước, bật **Remove dimension annotations**.
+6. Nhấn **Generate G-Code**.
 
 GUI có preview ảnh, hiển thị trạng thái xử lý và nút mở thư mục output. Thư mục cha của output được tự động tạo khi sinh G-code.
 
@@ -171,18 +224,20 @@ dist/ImageToGCode.exe
 python -m unittest discover -s tests -v
 ```
 
-Bộ kiểm thử bao gồm hiệu chuẩn, bounding box G54, hierarchy child-first, loại ô chuẩn, nhận dạng hình tròn, tham số không hợp lệ, header/footer và smoke test sinh file `.nc`.
+Bộ kiểm thử bao gồm hiệu chuẩn hollow/centerline, scale tường minh cho ảnh
+không metadata, bounding box G54, hierarchy child-first, xuất DXF, direct DXF
+input, hai cung `G02`, đóng polyline, header/footer và quản lý thư mục output.
 
 ## Cấu trúc dự án
 
 ```text
 .
 ├── app.py                  # Giao diện Tkinter
-├── run.py                  # Pipeline xử lý và CLI
+├── run.py                  # Image -> DXF -> G-code, post-processor và CLI
 ├── requirements.txt        # Dependency Python
 ├── build_windows.bat       # Đóng gói ImageToGCode.exe
 ├── input/input.png         # Ảnh mẫu mặc định
-├── output/output.nc        # G-code mẫu được sinh
 └── tests/
-    └── test_image_to_gcode.py
+    ├── test_image_to_gcode.py
+    └── test_dxf_pipeline.py
 ```

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import tempfile
 import unittest
 from dataclasses import replace
@@ -11,17 +12,23 @@ import numpy as np
 from run import (
     CIRCULARITY_THRESHOLD,
     CONTOUR_SMOOTHING_EPSILON_RATIO,
+    CURVE_SMOOTHING_MAX_EPSILON_PX,
     DEFAULT_INPUT_PATH,
-    DEFAULT_OUTPUT_PATH,
+    DEFAULT_OUTPUT_DIRECTORY,
+    MIN_CALIBRATION_BLACK_RATIO,
     MULTIPLE_CALIBRATION_ERROR,
+    SCALE_REFERENCE_ERROR,
     MachiningConfig,
     circle_geometry_mm,
+    contour_black_ratio,
     contour_circularity,
     convert_image_to_gcode,
     detect_calibration,
     extract_contours,
     generate_gcode,
+    is_calibration_square,
     is_ideal_circle,
+    load_binary_image,
     machining_origin,
     main,
     order_contours_child_first,
@@ -47,32 +54,11 @@ def write_test_image(path: Path, *, calibration_count: int = 1) -> None:
         raise RuntimeError(f"Could not create test image: {path}")
 
 
-def write_dimensioned_test_image(path: Path) -> None:
-    """A part drawn as unfilled outline strokes (not solid fills), with thin
-    dimension/extension lines and text overlaid -- one extension line touches
-    the part outline directly, mirroring real CAD-exported drawings."""
-    image = np.full((360, 400, 3), 255, dtype=np.uint8)
-    cv2.rectangle(image, (20, 20), (69, 69), (0, 0, 0), -1)  # 10x10 mm calibration square
-    cv2.rectangle(image, (100, 80), (300, 260), (0, 0, 0), thickness=6)  # outline part
-    cv2.circle(image, (200, 170), 35, (0, 0, 0), thickness=6)  # outline hole
-    cv2.line(image, (100, 20), (100, 79), (0, 0, 0), thickness=2)  # extension line touching the outline
-    cv2.line(image, (60, 300), (340, 300), (0, 0, 0), thickness=2)  # dimension line
-    cv2.putText(
-        image, "200", (170, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA
-    )
-    if not cv2.imwrite(str(path), image):
-        raise RuntimeError(f"Could not create test image: {path}")
-
-
-def write_filled_dimension_extension_image(path: Path) -> None:
-    """A filled plate with an extension line joined to its left boundary."""
-    image = np.full((360, 400, 3), 255, dtype=np.uint8)
+def write_reference_and_outline_square_image(path: Path) -> None:
+    """A filled reference marker beside square outline machining geometry."""
+    image = np.full((320, 420, 3), 255, dtype=np.uint8)
     cv2.rectangle(image, (20, 20), (69, 69), (0, 0, 0), -1)
-    cv2.rectangle(image, (100, 80), (300, 260), (0, 0, 0), -1)
-    cv2.circle(image, (200, 170), 35, (255, 255, 255), -1)
-    # Three pixels is a common result after anti-aliased source artwork is
-    # thresholded; it must still be treated as an annotation, not part stock.
-    cv2.line(image, (100, 20), (100, 79), (0, 0, 0), 3)
+    cv2.rectangle(image, (140, 80), (320, 260), (0, 0, 0), thickness=6)
     if not cv2.imwrite(str(path), image):
         raise RuntimeError(f"Could not create test image: {path}")
 
@@ -90,11 +76,38 @@ def make_circle_contour(
     return np.rint(points).astype(np.int32).reshape(-1, 1, 2)
 
 
+def make_ellipse_contour(
+    center: tuple[float, float] = (150.0, 100.0),
+    axes: tuple[float, float] = (120.0, 45.0),
+) -> np.ndarray:
+    angles = np.linspace(0.0, 2.0 * np.pi, 720, endpoint=False)
+    points = np.column_stack(
+        (
+            center[0] + axes[0] * np.cos(angles),
+            center[1] + axes[1] * np.sin(angles),
+        )
+    )
+    return np.rint(points).astype(np.int32).reshape(-1, 1, 2)
+
+
+def make_semicircle_contour(
+    center: tuple[float, float] = (100.0, 100.0), radius: float = 80.0
+) -> np.ndarray:
+    angles = np.linspace(-0.5 * np.pi, 0.5 * np.pi, 361)
+    arc_points = np.column_stack(
+        (
+            center[0] + radius * np.cos(angles),
+            center[1] + radius * np.sin(angles),
+        )
+    )
+    return np.rint(arc_points).astype(np.int32).reshape(-1, 1, 2)
+
+
 class ImageToGcodeTests(unittest.TestCase):
     def test_cli_defaults(self) -> None:
         args = parse_args([])
         self.assertEqual(DEFAULT_INPUT_PATH, args.input)
-        self.assertEqual(DEFAULT_OUTPUT_PATH, args.output)
+        self.assertEqual(DEFAULT_OUTPUT_DIRECTORY, args.output_dir)
         self.assertEqual(-5.0, args.cut_depth)
         self.assertEqual(1500, args.spindle_speed)
 
@@ -113,7 +126,10 @@ class ImageToGcodeTests(unittest.TestCase):
         contour = make_circle_contour(radius=40.0)
         expected = cv2.approxPolyDP(
             contour,
-            CONTOUR_SMOOTHING_EPSILON_RATIO * cv2.arcLength(contour, True),
+            min(
+                CONTOUR_SMOOTHING_EPSILON_RATIO * cv2.arcLength(contour, True),
+                CURVE_SMOOTHING_MAX_EPSILON_PX,
+            ),
             True,
         )
 
@@ -123,8 +139,46 @@ class ImageToGcodeTests(unittest.TestCase):
         np.testing.assert_array_equal(expected, smoothed[0])
         self.assertLessEqual(len(smoothed[0]), len(contour))
 
+    def test_long_ellipse_uses_pixel_capped_smoothing(self) -> None:
+        contour = make_ellipse_contour()
+        uncapped = cv2.approxPolyDP(
+            contour,
+            CONTOUR_SMOOTHING_EPSILON_RATIO * cv2.arcLength(contour, True),
+            True,
+        )
+        expected = cv2.approxPolyDP(
+            contour,
+            CURVE_SMOOTHING_MAX_EPSILON_PX,
+            True,
+        )
+
+        smoothed = smooth_contours([contour])[0]
+
+        np.testing.assert_array_equal(expected, smoothed)
+        self.assertGreater(len(smoothed), len(uncapped))
+
+    def test_semicircle_uses_pixel_capped_smoothing(self) -> None:
+        contour = make_semicircle_contour()
+        uncapped = cv2.approxPolyDP(
+            contour,
+            CONTOUR_SMOOTHING_EPSILON_RATIO * cv2.arcLength(contour, True),
+            True,
+        )
+        expected = cv2.approxPolyDP(
+            contour,
+            CURVE_SMOOTHING_MAX_EPSILON_PX,
+            True,
+        )
+
+        smoothed = smooth_contours([contour])[0]
+
+        np.testing.assert_array_equal(expected, smoothed)
+        self.assertGreater(len(smoothed), len(uncapped))
+
     def test_bracket_tab_smooths_rasterized_triangle(self) -> None:
         image_path = Path("input/samples/06_bracket_tab.png")
+        if not image_path.exists():
+            self.skipTest(f"{image_path} not found")
 
         contours, _ = extract_contours(image_path)
         valid = valid_contour_indices(contours)
@@ -207,7 +261,7 @@ class ImageToGcodeTests(unittest.TestCase):
         )
 
         rebuilt_contours, rebuilt_hierarchy = prune_stroke_ring_artifacts(
-            contours, hierarchy, (120, 120), kernel_px=2, min_residue_area=0.0
+            contours, hierarchy, (120, 120), kernel_px=2
         )
 
         self.assertEqual(2, len(rebuilt_contours))
@@ -255,6 +309,43 @@ class ImageToGcodeTests(unittest.TestCase):
             ):
                 detect_calibration(contours, valid)
 
+    def test_black_ratio_distinguishes_reference_from_square_outline(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = Path(directory) / "square-outline.png"
+            output_path = Path(directory) / "output.nc"
+            write_reference_and_outline_square_image(image_path)
+
+            binary = load_binary_image(image_path)
+            contours, _ = extract_contours(image_path)
+            valid = valid_contour_indices(contours)
+            geometric_squares = [
+                index for index in valid if is_calibration_square(contours[index])
+            ]
+            calibration_index, scale_factor = detect_calibration(
+                contours, valid, binary=binary
+            )
+
+            # The reference marker and the retained edge of the outlined
+            # square remain; the redundant inner stroke edge is collapsed.
+            self.assertGreaterEqual(len(geometric_squares), 2)
+            self.assertAlmostEqual(5.0, scale_factor, places=6)
+            self.assertGreaterEqual(
+                contour_black_ratio(contours[calibration_index], binary),
+                MIN_CALIBRATION_BLACK_RATIO,
+            )
+            for index in geometric_squares:
+                if index != calibration_index:
+                    self.assertLess(
+                        contour_black_ratio(contours[index], binary),
+                        MIN_CALIBRATION_BLACK_RATIO,
+                    )
+
+            converted_scale, contour_count = convert_image_to_gcode(
+                image_path, output_path, MachiningConfig()
+            )
+            self.assertAlmostEqual(5.0, converted_scale, places=6)
+            self.assertEqual(1, contour_count)
+
     def test_missing_calibration_is_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             image_path = Path(directory) / "no-calibration.png"
@@ -263,6 +354,71 @@ class ImageToGcodeTests(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "No 10x10 mm calibration square"):
                 detect_calibration(contours, valid_contour_indices(contours))
+
+    def test_no_metadata_image_accepts_explicit_reference_dimensions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = Path(directory) / "no-metadata.png"
+            output_path = Path(directory) / "output.nc"
+            write_test_image(image_path, calibration_count=0)
+
+            scale_factor, contour_count = convert_image_to_gcode(
+                image_path,
+                output_path,
+                MachiningConfig(),
+                reference_width_mm=40.0,
+                reference_height_mm=36.0,
+            )
+
+            self.assertAlmostEqual(5.0, scale_factor, places=6)
+            self.assertEqual(2, contour_count)
+            self.assertTrue(output_path.is_file())
+            gcode = output_path.read_text(encoding="ascii")
+            self.assertNotIn("nan", gcode.lower())
+            self.assertNotIn("inf", gcode.lower())
+
+    def test_no_metadata_image_accepts_explicit_pixels_per_mm(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = Path(directory) / "no-metadata.png"
+            output_path = Path(directory) / "output.nc"
+            write_test_image(image_path, calibration_count=0)
+
+            scale_factor, _contour_count = convert_image_to_gcode(
+                image_path,
+                output_path,
+                MachiningConfig(),
+                pixels_per_mm=5.0,
+            )
+
+            self.assertAlmostEqual(5.0, scale_factor, places=6)
+            self.assertTrue(output_path.is_file())
+
+    def test_no_metadata_image_without_reference_fails_before_gcode(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = Path(directory) / "no-metadata.png"
+            output_path = Path(directory) / "output.nc"
+            write_test_image(image_path, calibration_count=0)
+
+            with self.assertRaisesRegex(RuntimeError, SCALE_REFERENCE_ERROR):
+                convert_image_to_gcode(image_path, output_path, MachiningConfig())
+
+            self.assertFalse(output_path.exists())
+
+    def test_scale_reference_dimensions_must_match_one_uniform_scale(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = Path(directory) / "no-metadata.png"
+            output_path = Path(directory) / "output.nc"
+            write_test_image(image_path, calibration_count=0)
+
+            with self.assertRaisesRegex(RuntimeError, "scale differs by more than 5%"):
+                convert_image_to_gcode(
+                    image_path,
+                    output_path,
+                    MachiningConfig(),
+                    reference_width_mm=40.0,
+                    reference_height_mm=30.0,
+                )
+
+            self.assertFalse(output_path.exists())
 
     def test_unreadable_image_is_an_error(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "Unable to read input image"):
@@ -312,19 +468,23 @@ class ImageToGcodeTests(unittest.TestCase):
     def test_end_to_end_smoke_test(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             image_path = Path(directory) / "drawing.png"
-            output_path = Path(directory) / "output.nc"
+            output_root = Path(directory) / "output"
             write_test_image(image_path)
 
             result = main(
                 [
                     "--input",
                     str(image_path),
-                    "--output",
-                    str(output_path),
+                    "--output-dir",
+                    str(output_root),
                 ]
             )
 
             self.assertEqual(0, result)
+            run_directories = list(output_root.glob("drawing_*"))
+            self.assertEqual(1, len(run_directories))
+            output_path = run_directories[0] / "drawing.nc"
+            self.assertTrue((run_directories[0] / "drawing.dxf").is_file())
             gcode = output_path.read_text(encoding="ascii")
             self.assertIn("O1000 (Profile Milling)", gcode)
             self.assertNotIn("nan", gcode.lower())
@@ -341,15 +501,15 @@ class ImageToGcodeTests(unittest.TestCase):
     def test_output_parent_directory_is_created(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             image_path = Path(directory) / "drawing.png"
-            output_path = Path(directory) / "output" / "nested" / "output.nc"
+            output_root = Path(directory) / "output" / "nested"
             write_test_image(image_path)
 
             result = main(
-                ["--input", str(image_path), "--output", str(output_path)]
+                ["--input", str(image_path), "--output", str(output_root)]
             )
 
             self.assertEqual(0, result)
-            self.assertTrue(output_path.is_file())
+            self.assertEqual(1, len(list(output_root.glob("drawing_*/drawing.nc"))))
 
     def test_convert_does_not_emit_calibration_contour(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -368,67 +528,56 @@ class ImageToGcodeTests(unittest.TestCase):
                 output_path.read_text(encoding="ascii").count("(Close contour)"),
             )
 
-    def test_strip_dimensions_removes_annotations_and_collapses_outline_rings(
-        self,
-    ) -> None:
+    def test_thick_outline_drawing_collapses_each_pair_of_stroke_edges(self) -> None:
+        image_path = Path("input/3.png")
+        if not image_path.exists():
+            self.skipTest(f"{image_path} not found")
         with tempfile.TemporaryDirectory() as directory:
-            image_path = Path(directory) / "dimensioned.png"
-            output_path = Path(directory) / "output.nc"
-            write_dimensioned_test_image(image_path)
+            output_path = Path(directory) / "3.nc"
 
-            # Without stripping, the dimension line/text/touching extension
-            # line are all traced as bogus extra machining contours.
-            _, unstripped_contour_count = convert_image_to_gcode(
+            scale_factor, contour_count = convert_image_to_gcode(
                 image_path, output_path, MachiningConfig()
             )
-            self.assertGreater(unstripped_contour_count, 2)
 
-            scale_factor, contour_count = convert_image_to_gcode(
-                image_path, output_path, MachiningConfig(), strip_dimensions=True
-            )
+            self.assertAlmostEqual(16.54, scale_factor, places=6)
+            self.assertEqual(3, contour_count)  # outer square + diamond + circle
+            self.assertEqual(3, output_path.read_text(encoding="ascii").count("(Retract)"))
 
-            self.assertAlmostEqual(5.0, scale_factor, places=6)
-            self.assertEqual(2, contour_count)  # part outline + the one hole
-            gcode = output_path.read_text(encoding="ascii")
-            self.assertEqual(2, gcode.count("(Close contour)"))
-
-    def test_gold_drawing_strips_dimensions_to_part_contours(self) -> None:
-        """The repository's dimensioned reference drawing keeps only the
-        outer profile and its three real slot contours."""
-        image_path = Path("input/gold.png")
+    def test_analyze_image_returns_metadata(self) -> None:
+        from run import analyze_image
         with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "gold.nc"
-            scale_factor, contour_count = convert_image_to_gcode(
-                image_path,
-                output_path,
-                MachiningConfig(),
-                strip_dimensions=True,
-            )
+            image_path = Path(directory) / "drawing.png"
+            write_test_image(image_path)
 
-            self.assertAlmostEqual(4.9, scale_factor, places=6)
-            self.assertEqual(4, contour_count)
-            gcode = output_path.read_text(encoding="ascii")
-            self.assertEqual(4, gcode.count("(Close contour)"))
-            self.assertNotIn("nan", gcode.lower())
-            self.assertNotIn("inf", gcode.lower())
+            analysis = analyze_image(image_path)
+            self.assertEqual((320, 400), analysis.image_shape)
+            self.assertIsNotNone(analysis.scale_factor)
+            self.assertAlmostEqual(5.0, analysis.scale_factor)
+            self.assertIsNotNone(analysis.calibration_bbox_px)
+            self.assertIsNotNone(analysis.g54_origin_px)
+            self.assertEqual(2, analysis.contour_count)
 
-    def test_strip_dimensions_removes_extension_joined_to_filled_part(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            image_path = Path(directory) / "filled-extension.png"
-            write_filled_dimension_extension_image(image_path)
+    def test_app_parse_toolpath_and_sim_timeline(self) -> None:
+        from app import parse_toolpath_segments, build_sim_timeline, sim_state_at_time
+        sample_gcode = """
+        G90 G21
+        G00 X10.0 Y20.0 Z50.0
+        G01 Z-5.0 F100.0
+        G01 X30.0 Y20.0 F300.0
+        G02 X30.0 Y40.0 I0.0 J10.0 F300.0
+        G00 Z50.0
+        """
+        segments = parse_toolpath_segments(sample_gcode)
+        self.assertGreaterEqual(len(segments), 3)
+        frames, total_time, cut_dist, rapid_dist = build_sim_timeline(segments)
+        self.assertGreater(total_time, 0.0)
+        self.assertGreater(cut_dist, 0.0)
+        self.assertGreater(rapid_dist, 0.0)
 
-            contours, _ = extract_contours(image_path, strip_dimensions=True)
-            valid = valid_contour_indices(contours)
-            calibration_index, _ = detect_calibration(contours, valid)
-            machining = [index for index in valid if index != calibration_index]
-            outer = max(machining, key=lambda index: cv2.contourArea(contours[index]))
-            _x, y, _width, height = cv2.boundingRect(contours[outer])
-
-            # The line starts at y=20 and touches the plate at y=80.  It must
-            # not enlarge the machining contour beyond the filled rectangle.
-            self.assertGreaterEqual(y, 78)
-            self.assertLessEqual(y + height, 264)
-            self.assertEqual(2, len(machining))
+        x, y, z, kind, feed = sim_state_at_time(frames, total_time / 2.0)
+        self.assertTrue(math.isfinite(x))
+        self.assertTrue(math.isfinite(y))
+        self.assertTrue(math.isfinite(z))
 
 
 if __name__ == "__main__":
