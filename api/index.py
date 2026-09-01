@@ -9,15 +9,22 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+# Configure read-only serverless environment cache paths (e.g. AWS Lambda on Vercel)
+os.environ["EZDXF_DISABLE_CONFIG_FILE"] = "1"
+os.environ["XDG_CACHE_HOME"] = "/tmp"
+os.environ["EZDXF_CACHE_DIRECTORY"] = "/tmp/.cache/ezdxf"
+os.environ["MPLCONFIGDIR"] = "/tmp/.matplotlib"
+
 # Ensure project root is in sys.path when running in serverless environments
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import cv2
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from api.schemas import (
     ConversionResponse,
@@ -51,6 +58,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def normalize_vercel_paths(request: Request, call_next):
+    """Normalize paths if Vercel serverless forwards internal function path."""
+    path = request.scope.get("path", "")
+    if path == "/api/index.py":
+        request.scope["path"] = "/api"
+    elif path.startswith("/api/index.py/"):
+        request.scope["path"] = path.replace("/api/index.py", "/api", 1)
+    return await call_next(request)
 
 
 def _validate_image_file(file: UploadFile) -> str:
@@ -95,14 +113,17 @@ def _save_upload_to_temp(file_bytes: bytes, suffix: str) -> Path:
     return tmp_path
 
 
-@app.get("/api/health", response_model=HealthResponse, tags=["Health"])
-@app.get("/health", response_model=HealthResponse, include_in_schema=False)
+# Define API Router to handle both `/api/...` and `...` prefixes transparently
+api_router = APIRouter()
+
+
+@api_router.get("/health", response_model=HealthResponse, tags=["Health"])
 def health_check() -> HealthResponse:
     """Return API health and service metadata."""
     return HealthResponse()
 
 
-@app.post("/api/analyze", response_model=ImageAnalysisResponse, tags=["Vision"])
+@api_router.post("/analyze", response_model=ImageAnalysisResponse, tags=["Vision"])
 async def analyze_uploaded_image(
     image: UploadFile = File(..., description="Source CAD/drawing image"),
     strip_dimensions: bool = Form(default=False, description="Filter dimension lines/text"),
@@ -143,7 +164,7 @@ async def analyze_uploaded_image(
             pass
 
 
-@app.post("/api/convert", response_model=ConversionResponse, tags=["CAM & Post-Processor"])
+@api_router.post("/convert", response_model=ConversionResponse, tags=["CAM & Post-Processor"])
 async def convert_image(
     image: UploadFile = File(..., description="Source CAD/drawing image"),
     cut_depth: float = Form(default=-5.0, description="Target cut depth Z (mm)"),
@@ -291,3 +312,14 @@ async def convert_image(
                     p.unlink()
                 except OSError:
                     pass
+
+
+# Mount API Router under both `/api` and root `/` so all Vercel rewrite patterns work seamlessly
+app.include_router(api_router, prefix="/api")
+app.include_router(api_router, prefix="", include_in_schema=False)
+app.include_router(api_router, prefix="/api/index.py", include_in_schema=False)
+
+# Mount static files from public/ to serve frontend on / when running locally or on server
+PUBLIC_DIR = PROJECT_ROOT / "public"
+if PUBLIC_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="static")
