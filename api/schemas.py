@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -14,8 +14,24 @@ class HealthResponse(BaseModel):
     service: str = Field(default="ImageToGCode CNC API", description="Service name")
 
 
+class DxfPreviewModel(BaseModel):
+    """2D CAD vector geometry for DXF preview rendering."""
+
+    lines: List[Dict[str, List[float]]] = Field(default_factory=list, description="Lines [[x1, y1], [x2, y2]]")
+    circles: List[Dict[str, Any]] = Field(default_factory=list, description="Circles {center, radius}")
+    arcs: List[Dict[str, Any]] = Field(default_factory=list, description="Arcs {center, radius, start_angle, end_angle}")
+    polylines: List[Dict[str, Any]] = Field(default_factory=list, description="Polylines {points, closed}")
+    min_x: float = Field(default=0.0, description="Min X in mm")
+    max_x: float = Field(default=0.0, description="Max X in mm")
+    min_y: float = Field(default=0.0, description="Min Y in mm")
+    max_y: float = Field(default=0.0, description="Max Y in mm")
+    width_mm: float = Field(default=0.0, description="Bounding envelope width in mm")
+    height_mm: float = Field(default=0.0, description="Bounding envelope height in mm")
+    entity_count: int = Field(default=0, description="Total entity count")
+
+
 class ImageAnalysisResponse(BaseModel):
-    """Analysis results for source image."""
+    """Analysis results for source image or DXF CAD file."""
 
     image_width: int
     image_height: int
@@ -24,6 +40,7 @@ class ImageAnalysisResponse(BaseModel):
     machining_bbox_px: Optional[List[int]] = None    # [x1, y1, x2, y2]
     g54_origin_px: Optional[List[float]] = None      # [x, y]
     contour_count: int = 0
+    dxf_preview: Optional[DxfPreviewModel] = Field(default=None, description="2D CAD vector preview if input is DXF")
 
 
 class ToolpathSegmentModel(BaseModel):
@@ -58,4 +75,4 @@ class ConversionResponse(BaseModel):
     timeline: SimulationTimelineModel
     gcode: str = Field(description="Raw Fanuc profile milling G-code")
     dxf_base64: Optional[str] = Field(default=None, description="Base64-encoded DXF CAD drawing")
-    filename_base: str = Field(default="drawing", description="Recommended base filename")
+    filename_base: str = Field(default="drawing", description="Base filename for downloads")

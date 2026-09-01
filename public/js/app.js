@@ -45,11 +45,16 @@ class ImageToGCodeWebApp {
     this.downloadDxfBtn = document.getElementById('btn-download-dxf');
     this.viewGcodeBtn = document.getElementById('btn-view-gcode');
 
-    // Preview Canvas & Info
+    // Preview Canvas & Controls
     this.previewCanvas = document.getElementById('preview-canvas');
     this.previewInfo = document.getElementById('preview-info');
     this.previewCoords = document.getElementById('preview-coords');
     this.showTagsCheck = document.getElementById('toggle-show-tags');
+    this.togglePreviewGrid = document.getElementById('toggle-preview-grid');
+    this.togglePreviewAxes = document.getElementById('toggle-preview-axes');
+    this.btnPreviewZoomIn = document.getElementById('btn-preview-zoom-in');
+    this.btnPreviewZoomOut = document.getElementById('btn-preview-zoom-out');
+    this.btnPreviewFit = document.getElementById('btn-preview-fit');
 
     // Simulator Canvas & Controls
     this.simCanvas = document.getElementById('sim-canvas');
@@ -146,10 +151,31 @@ class ImageToGCodeWebApp {
     this.downloadDxfBtn.addEventListener('click', () => this._downloadDxfFile());
     this.viewGcodeBtn.addEventListener('click', () => this._openGcodeModal());
 
-    // Preview Toggles
-    this.showTagsCheck.addEventListener('change', (e) => {
-      this.previewViewer.setShowTags(e.target.checked);
-    });
+    // Preview Toggles & Zoom Controls
+    if (this.showTagsCheck) {
+      this.showTagsCheck.addEventListener('change', (e) => {
+        this.previewViewer.setShowTags(e.target.checked);
+      });
+    }
+    if (this.togglePreviewGrid) {
+      this.togglePreviewGrid.addEventListener('change', (e) => {
+        this.previewViewer.setShowGrid(e.target.checked);
+      });
+    }
+    if (this.togglePreviewAxes) {
+      this.togglePreviewAxes.addEventListener('change', (e) => {
+        this.previewViewer.setShowAxes(e.target.checked);
+      });
+    }
+    if (this.btnPreviewZoomIn) {
+      this.btnPreviewZoomIn.addEventListener('click', () => this.previewViewer.zoomIn());
+    }
+    if (this.btnPreviewZoomOut) {
+      this.btnPreviewZoomOut.addEventListener('click', () => this.previewViewer.zoomOut());
+    }
+    if (this.btnPreviewFit) {
+      this.btnPreviewFit.addEventListener('click', () => this.previewViewer.fitView());
+    }
 
     this.stripDimensionsCheck.addEventListener('change', () => {
       if (this.selectedFile) {

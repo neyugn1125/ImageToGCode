@@ -178,25 +178,48 @@
 
       <!-- 1. IMAGE PREVIEW PANEL -->
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col gap-2">
-        <div class="flex items-center justify-between">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-blue-600"></span>
-            <h3 class="text-sm font-bold text-slate-900">1. Image Preview (Source Drawing & Analysis)</h3>
+            <h3 class="text-sm font-bold text-slate-900">1. Image & DXF Preview (Source Drawing & Analysis)</h3>
           </div>
-          <label class="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
-            <input type="checkbox" id="toggle-show-tags" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-            <span>Show detection tags (10x10mm, G54, Envelope)</span>
-          </label>
+          <div class="flex items-center gap-3 text-xs text-slate-600 select-none">
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="toggle-show-tags" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
+              <span>Tags (G54/Env)</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="toggle-preview-grid" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
+              <span>Grid</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="toggle-preview-axes" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
+              <span>Axes (+X/+Y)</span>
+            </label>
+          </div>
         </div>
 
         <!-- Preview Canvas -->
-        <div class="w-full h-44 bg-slate-50 rounded-lg border border-slate-200 overflow-hidden relative flex items-center justify-center">
-          <canvas id="preview-canvas" class="w-full h-full"></canvas>
+        <div class="w-full h-52 bg-slate-50 rounded-lg border border-slate-200 overflow-hidden relative flex items-center justify-center group">
+          <canvas id="preview-canvas" class="w-full h-full cad-canvas"></canvas>
+
+          <!-- Floating Zoom Controls -->
+          <div class="absolute top-2 right-2 flex items-center gap-1 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-lg p-1 shadow-sm opacity-80 group-hover:opacity-100 transition">
+            <button id="btn-preview-zoom-in" title="Zoom In (+)" class="w-6 h-6 flex items-center justify-center text-xs font-bold text-slate-700 hover:bg-slate-100 rounded transition">
+              +
+            </button>
+            <button id="btn-preview-zoom-out" title="Zoom Out (-)" class="w-6 h-6 flex items-center justify-center text-xs font-bold text-slate-700 hover:bg-slate-100 rounded transition">
+              -
+            </button>
+            <button id="btn-preview-fit" title="Fit View (Double-click)" class="px-2 h-6 flex items-center justify-center text-[10px] font-bold text-slate-700 hover:bg-slate-100 rounded transition">
+              Fit
+            </button>
+          </div>
         </div>
 
         <!-- Preview Footer -->
         <div class="flex items-center justify-between text-xs text-slate-500 font-medium pt-1">
-          <div id="preview-info">Select an image to preview</div>
+          <div id="preview-info">Select an image or DXF to preview (Scroll: Zoom | Drag: Pan | Dbl-click: Fit)</div>
           <div id="preview-coords" class="font-mono-cad text-slate-700"></div>
         </div>
       </div>

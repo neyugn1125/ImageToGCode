@@ -153,6 +153,32 @@ class DxfPipelineTests(unittest.TestCase):
             self.assertIsNone(first.scale_factor)
             self.assertEqual(1, first.entity_count)
 
+    def test_extract_dxf_preview_geometry(self) -> None:
+        from core.dxf import extract_dxf_preview_geometry
+
+        document = ezdxf.new("R2010")
+        document.units = units.MM
+        msp = document.modelspace()
+        msp.add_line((0.0, 0.0), (50.0, 0.0))
+        msp.add_circle((25.0, 25.0), 10.0)
+        msp.add_arc((25.0, 25.0), 5.0, 0.0, 180.0)
+        msp.add_lwpolyline([(0, 0), (10, 10), (20, 0)], close=True)
+
+        preview = extract_dxf_preview_geometry(document)
+        self.assertEqual(4, preview.entity_count)
+        self.assertEqual(1, len(preview.lines))
+        self.assertEqual(1, len(preview.circles))
+        self.assertEqual(1, len(preview.arcs))
+        self.assertEqual(1, len(preview.polylines))
+        self.assertGreater(preview.width_mm, 0)
+        self.assertGreater(preview.height_mm, 0)
+        p_dict = preview.to_dict()
+        self.assertIn("lines", p_dict)
+        self.assertIn("circles", p_dict)
+        self.assertIn("arcs", p_dict)
+        self.assertIn("polylines", p_dict)
+
 
 if __name__ == "__main__":
     unittest.main()
+

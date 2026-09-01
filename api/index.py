@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 
 from api.schemas import (
     ConversionResponse,
+    DxfPreviewModel,
     HealthResponse,
     ImageAnalysisResponse,
     SimulationTimelineModel,
@@ -37,6 +38,7 @@ from api.schemas import (
 )
 from core.config import MachiningConfig, validate_config
 from core.dxf.exporter import image_to_dxf
+from core.dxf.preview import extract_dxf_preview_geometry
 from core.dxf.reader import _dxf_unit_scale_to_mm
 from core.pipeline import convert_image_to_gcode, dxf_to_gcode
 from core.post import build_sim_timeline, parse_toolpath_segments
@@ -170,51 +172,35 @@ async def analyze_uploaded_image(
     try:
         if suffix == ".dxf":
             doc = ezdxf.readfile(str(temp_img_path))
-            scale_to_mm = _dxf_unit_scale_to_mm(doc)
-            xs: list[float] = []
-            ys: list[float] = []
-            entity_count = 0
-            for entity in doc.modelspace():
-                etype = entity.dxftype()
-                if etype == "CIRCLE":
-                    cx = float(entity.dxf.center.x) * scale_to_mm
-                    cy = float(entity.dxf.center.y) * scale_to_mm
-                    r = float(entity.dxf.radius) * scale_to_mm
-                    xs.extend([cx - r, cx + r])
-                    ys.extend([cy - r, cy + r])
-                    entity_count += 1
-                elif etype in ("LWPOLYLINE", "POLYLINE"):
-                    for x, y in entity.get_points("xy"):
-                        xs.append(float(x) * scale_to_mm)
-                        ys.append(float(y) * scale_to_mm)
-                    entity_count += 1
-                elif etype == "LINE":
-                    xs.extend([float(entity.dxf.start.x) * scale_to_mm, float(entity.dxf.end.x) * scale_to_mm])
-                    ys.extend([float(entity.dxf.start.y) * scale_to_mm, float(entity.dxf.end.y) * scale_to_mm])
-                    entity_count += 1
-                elif etype == "ARC":
-                    cx = float(entity.dxf.center.x) * scale_to_mm
-                    cy = float(entity.dxf.center.y) * scale_to_mm
-                    r = float(entity.dxf.radius) * scale_to_mm
-                    xs.extend([cx - r, cx + r])
-                    ys.extend([cy - r, cy + r])
-                    entity_count += 1
-
-            min_x = min(xs, default=0.0)
-            max_x = max(xs, default=0.0)
-            min_y = min(ys, default=0.0)
-            max_y = max(ys, default=0.0)
-            w_mm = max(1.0, max_x - min_x)
-            h_mm = max(1.0, max_y - min_y)
+            preview_geo = extract_dxf_preview_geometry(doc)
+            preview_model = DxfPreviewModel(
+                lines=preview_geo.lines,
+                circles=preview_geo.circles,
+                arcs=preview_geo.arcs,
+                polylines=preview_geo.polylines,
+                min_x=round(preview_geo.min_x, 3),
+                max_x=round(preview_geo.max_x, 3),
+                min_y=round(preview_geo.min_y, 3),
+                max_y=round(preview_geo.max_y, 3),
+                width_mm=round(preview_geo.width_mm, 3),
+                height_mm=round(preview_geo.height_mm, 3),
+                entity_count=preview_geo.entity_count,
+            )
 
             return ImageAnalysisResponse(
-                image_width=int(round(w_mm)),
-                image_height=int(round(h_mm)),
+                image_width=int(round(max(1.0, preview_geo.width_mm))),
+                image_height=int(round(max(1.0, preview_geo.height_mm))),
                 scale_factor=1.0,
                 calibration_bbox_px=None,
-                machining_bbox_px=[int(min_x), int(min_y), int(max_x), int(max_y)],
+                machining_bbox_px=[
+                    int(round(preview_geo.min_x)),
+                    int(round(preview_geo.min_y)),
+                    int(round(preview_geo.max_x)),
+                    int(round(preview_geo.max_y)),
+                ],
                 g54_origin_px=[0.0, 0.0],
-                contour_count=entity_count,
+                contour_count=preview_geo.entity_count,
+                dxf_preview=preview_model,
             )
 
         # Standard raster image analysis
@@ -235,6 +221,7 @@ async def analyze_uploaded_image(
             machining_bbox_px=list(analysis.machining_bbox_px) if analysis.machining_bbox_px else None,
             g54_origin_px=[float(analysis.g54_origin_px[0]), float(analysis.g54_origin_px[1])] if analysis.g54_origin_px else None,
             contour_count=analysis.contour_count,
+            dxf_preview=None,
         )
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
@@ -299,6 +286,22 @@ async def convert_image(
             with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp_nc:
                 temp_nc_path = Path(tmp_nc.name)
 
+            doc = ezdxf.readfile(str(temp_img_path))
+            preview_geo = extract_dxf_preview_geometry(doc)
+            preview_model = DxfPreviewModel(
+                lines=preview_geo.lines,
+                circles=preview_geo.circles,
+                arcs=preview_geo.arcs,
+                polylines=preview_geo.polylines,
+                min_x=round(preview_geo.min_x, 3),
+                max_x=round(preview_geo.max_x, 3),
+                min_y=round(preview_geo.min_y, 3),
+                max_y=round(preview_geo.max_y, 3),
+                width_mm=round(preview_geo.width_mm, 3),
+                height_mm=round(preview_geo.height_mm, 3),
+                entity_count=preview_geo.entity_count,
+            )
+
             converted_count = dxf_to_gcode(temp_img_path, temp_nc_path, config)
             gcode_content = temp_nc_path.read_text(encoding="ascii")
             dxf_bytes = temp_img_path.read_bytes()
@@ -326,13 +329,14 @@ async def convert_image(
             return ConversionResponse(
                 success=True,
                 analysis=ImageAnalysisResponse(
-                    image_width=int(round(max_x - min_x)),
-                    image_height=int(round(max_y - min_y)),
+                    image_width=int(round(max(1.0, max_x - min_x))),
+                    image_height=int(round(max(1.0, max_y - min_y))),
                     scale_factor=1.0,
                     calibration_bbox_px=None,
                     machining_bbox_px=[int(min_x), int(min_y), int(max_x), int(max_y)],
                     g54_origin_px=[0.0, 0.0],
                     contour_count=converted_count,
+                    dxf_preview=preview_model,
                 ),
                 segments=segment_models,
                 timeline=SimulationTimelineModel(

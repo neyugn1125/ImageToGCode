@@ -20,6 +20,7 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Callable, NamedTuple
 
 import cv2
+import ezdxf
 
 from core.config import (
     DEFAULT_INPUT_PATH,
@@ -29,6 +30,7 @@ from core.config import (
     MachiningConfig,
     validate_config,
 )
+from core.dxf import DxfPreviewData, extract_dxf_preview_geometry
 from core.pipeline import convert_image_to_gcode, dxf_to_gcode
 from core.post import (
     Frame,
@@ -200,10 +202,13 @@ class ImageToGCodeApp(ttk.Frame):
         self._current_analysis: ImageAnalysisResult | None = None
         self._current_segments: list[Segment] | None = None
         self._preview_scale = 1.0
+        self._preview_base_scale = 1.0
         self._preview_img_offset_x = 0.0
         self._preview_img_offset_y = 0.0
         self._preview_img_w = 0
         self._preview_img_h = 0
+        self._preview_drag_last: tuple[int, int] | None = None
+        self._preview_has_custom_transform = False
         self._preview_resize_job: str | None = None
         self._sim_resize_job: str | None = None
 
@@ -254,6 +259,8 @@ class ImageToGCodeApp(ttk.Frame):
 
         # View Toggles
         self.show_detection_tags_var = tk.BooleanVar(value=True)
+        self.show_preview_grid_var = tk.BooleanVar(value=True)
+        self.show_preview_axes_var = tk.BooleanVar(value=True)
         self.show_grid_var = tk.BooleanVar(value=True)
         self.show_rapids_var = tk.BooleanVar(value=True)
         self.show_arrows_var = tk.BooleanVar(value=True)
@@ -453,25 +460,62 @@ class ImageToGCodeApp(ttk.Frame):
         preview_top_bar = ttk.Frame(preview_panel, style="TFrame")
         preview_top_bar.grid(row=0, column=0, sticky="ew", pady=(0, 3))
         preview_top_bar.columnconfigure(0, weight=1)
+
+        toggles_frame = ttk.Frame(preview_top_bar, style="TFrame")
+        toggles_frame.pack(side="left")
+
         self.show_tags_check = ttk.Checkbutton(
-            preview_top_bar,
-            text="Show detection tags (10x10mm Calib, G54, Envelope)",
+            toggles_frame,
+            text="Tags (G54/Env)",
             variable=self.show_detection_tags_var,
             style="Panel.TCheckbutton",
             command=self._redraw_preview,
         )
-        self.show_tags_check.grid(row=0, column=0, sticky="w")
+        self.show_tags_check.pack(side="left")
+
+        self.show_preview_grid_check = ttk.Checkbutton(
+            toggles_frame,
+            text="Grid",
+            variable=self.show_preview_grid_var,
+            style="Panel.TCheckbutton",
+            command=self._redraw_preview,
+        )
+        self.show_preview_grid_check.pack(side="left", padx=(8, 0))
+
+        self.show_preview_axes_check = ttk.Checkbutton(
+            toggles_frame,
+            text="Axes (+X/+Y)",
+            variable=self.show_preview_axes_var,
+            style="Panel.TCheckbutton",
+            command=self._redraw_preview,
+        )
+        self.show_preview_axes_check.pack(side="left", padx=(8, 0))
+
+        # Quick Zoom Controls
+        zoom_frame = ttk.Frame(preview_top_bar, style="TFrame")
+        zoom_frame.pack(side="right")
+        ttk.Button(zoom_frame, text="+", width=2, command=self._zoom_in_preview).pack(side="left")
+        ttk.Button(zoom_frame, text="-", width=2, command=self._zoom_out_preview).pack(side="left", padx=(2, 0))
+        ttk.Button(zoom_frame, text="Fit", width=3, command=self._on_preview_fit).pack(side="left", padx=(2, 0))
 
         self.preview_canvas = tk.Canvas(
             preview_panel,
             width=560,
-            height=160,
+            height=170,
             background="#fafafa",
             highlightthickness=1,
             highlightbackground="#dedede",
+            cursor="crosshair",
         )
         self.preview_canvas.grid(row=1, column=0, sticky="nsew")
         self.preview_canvas.bind("<Configure>", self._on_preview_canvas_configure)
+        self.preview_canvas.bind("<MouseWheel>", self._on_preview_zoom)
+        self.preview_canvas.bind("<Button-4>", self._on_preview_zoom)
+        self.preview_canvas.bind("<Button-5>", self._on_preview_zoom)
+        self.preview_canvas.bind("<ButtonPress-1>", self._on_preview_drag_start)
+        self.preview_canvas.bind("<B1-Motion>", self._on_preview_drag_move)
+        self.preview_canvas.bind("<ButtonRelease-1>", self._on_preview_drag_end)
+        self.preview_canvas.bind("<Double-Button-1>", self._on_preview_fit)
         self.preview_canvas.bind("<Motion>", self._on_preview_mouse_move)
         self.preview_canvas.bind("<Leave>", self._on_preview_mouse_leave)
 
@@ -715,7 +759,69 @@ class ImageToGCodeApp(ttk.Frame):
         if self._current_preview_path is not None:
             self._load_preview(self._current_preview_path)
 
+    def _on_preview_zoom(self, event: tk.Event) -> None:
+        if self._preview_img_w <= 0 or self._preview_img_h <= 0:
+            return
+        factor = 1.15 if (event.delta > 0 or getattr(event, "num", None) == 4) else 0.87
+        new_scale = max(0.02, min(self._preview_scale * factor, 100.0))
+        self._preview_has_custom_transform = True
+
+        if self._current_dxf_preview is not None:
+            wx = (event.x - self._preview_img_offset_x) / self._preview_scale
+            wy = (self._preview_img_offset_y - event.y) / self._preview_scale
+            self._preview_scale = new_scale
+            self._preview_img_offset_x = event.x - wx * new_scale
+            self._preview_img_offset_y = event.y + wy * new_scale
+        else:
+            ix = (event.x - self._preview_img_offset_x) / self._preview_scale
+            iy = (event.y - self._preview_img_offset_y) / self._preview_scale
+            self._preview_scale = new_scale
+            self._preview_img_offset_x = event.x - ix * new_scale
+            self._preview_img_offset_y = event.y - iy * new_scale
+
+        if self._current_preview_path is not None:
+            self._load_preview(self._current_preview_path)
+
+    def _on_preview_drag_start(self, event: tk.Event) -> None:
+        self._preview_drag_last = (event.x, event.y)
+
+    def _on_preview_drag_move(self, event: tk.Event) -> None:
+        if self._preview_drag_last is not None:
+            dx = event.x - self._preview_drag_last[0]
+            dy = event.y - self._preview_drag_last[1]
+            self._preview_drag_last = (event.x, event.y)
+            self._preview_img_offset_x += dx
+            self._preview_img_offset_y += dy
+            self._preview_has_custom_transform = True
+            if self._current_preview_path is not None:
+                self._load_preview(self._current_preview_path)
+        self._on_preview_mouse_move(event)
+
+    def _on_preview_drag_end(self, _event: tk.Event) -> None:
+        self._preview_drag_last = None
+
+    def _on_preview_fit(self, _event: tk.Event = None) -> None:
+        self._preview_has_custom_transform = False
+        if self._current_preview_path is not None:
+            self._load_preview(self._current_preview_path)
+
+    def _zoom_in_preview(self) -> None:
+        cw, ch = self._canvas_size(self.preview_canvas)
+        event = type("Event", (), {"x": cw // 2, "y": ch // 2, "delta": 120, "num": 4})()
+        self._on_preview_zoom(event)
+
+    def _zoom_out_preview(self) -> None:
+        cw, ch = self._canvas_size(self.preview_canvas)
+        event = type("Event", (), {"x": cw // 2, "y": ch // 2, "delta": -120, "num": 5})()
+        self._on_preview_zoom(event)
+
     def _on_preview_mouse_move(self, event: tk.Event) -> None:
+        if self._current_dxf_preview is not None and self._preview_scale > 0:
+            mm_x = (event.x - self._preview_img_offset_x) / self._preview_scale
+            mm_y = (self._preview_img_offset_y - event.y) / self._preview_scale
+            self.preview_coord_var.set(f"G54: X={mm_x:.2f}, Y={mm_y:.2f} mm")
+            return
+
         if self._preview_img_w <= 0 or self._preview_img_h <= 0:
             return
         img_x = (event.x - self._preview_img_offset_x) / self._preview_scale
@@ -748,27 +854,190 @@ class ImageToGCodeApp(ttk.Frame):
         if image_path.suffix.lower() == ".dxf":
             self.preview_photo = None
             self._current_analysis = None
-            self._preview_img_w = self._preview_img_h = 0
-            self.preview_info_var.set(f"DXF CAD File | {image_path.name}")
-            self.preview_canvas.create_rectangle(
-                20, 20, canvas_width - 20, canvas_height - 20,
-                fill="#f0f4f8", outline="#cbd5e1", width=1
+            try:
+                doc = ezdxf.readfile(str(image_path))
+                preview_geo = extract_dxf_preview_geometry(doc)
+            except Exception as err:
+                self._current_dxf_preview = None
+                self._preview_img_w = self._preview_img_h = 0
+                self.preview_info_var.set(f"Unable to read DXF: {err}")
+                self.preview_canvas.create_text(
+                    canvas_width // 2,
+                    canvas_height // 2,
+                    text=f"Error reading DXF: {err}",
+                    fill=ERROR_COLOR,
+                    font=("Segoe UI", 10),
+                )
+                return
+
+            self._current_dxf_preview = preview_geo
+            self._preview_img_w = max(1, int(round(preview_geo.width_mm)))
+            self._preview_img_h = max(1, int(round(preview_geo.height_mm)))
+
+            margin = 35
+            range_x = max(1.0, preview_geo.max_x - preview_geo.min_x)
+            range_y = max(1.0, preview_geo.max_y - preview_geo.min_y)
+            base_scale = min(
+                (canvas_width - 2 * margin) / range_x,
+                (canvas_height - 2 * margin) / range_y,
             )
-            self.preview_canvas.create_text(
-                canvas_width // 2,
-                canvas_height // 2 - 10,
-                text=f"DXF CAD File: {image_path.name}",
-                fill="#0067c0",
-                font=("Segoe UI", 11, "bold"),
+            self._preview_base_scale = base_scale
+            if not self._preview_has_custom_transform:
+                self._preview_scale = base_scale
+                center_x = (preview_geo.min_x + preview_geo.max_x) / 2
+                center_y = (preview_geo.min_y + preview_geo.max_y) / 2
+                self._preview_img_offset_x = canvas_width / 2 - center_x * base_scale
+                self._preview_img_offset_y = canvas_height / 2 + center_y * base_scale
+
+            def to_canvas_x(x: float) -> float:
+                return x * self._preview_scale + self._preview_img_offset_x
+
+            def to_canvas_y(y: float) -> float:
+                return self._preview_img_offset_y - y * self._preview_scale
+
+            # 1. Background grid
+            if self.show_preview_grid_var.get():
+                grid_step = self._calculate_adaptive_grid_step(self._preview_scale)
+                min_wx = (0 - self._preview_img_offset_x) / self._preview_scale
+                max_wx = (canvas_width - self._preview_img_offset_x) / self._preview_scale
+                min_wy = (self._preview_img_offset_y - canvas_height) / self._preview_scale
+                max_wy = (self._preview_img_offset_y - 0) / self._preview_scale
+
+                start_x_idx = math.floor(min_wx / grid_step)
+                end_x_idx = math.ceil(max_wx / grid_step)
+                start_y_idx = math.floor(min_wy / grid_step)
+                end_y_idx = math.ceil(max_wy / grid_step)
+
+                for idx in range(start_x_idx, end_x_idx + 1):
+                    wx = idx * grid_step
+                    cx = to_canvas_x(wx)
+                    if 0 <= cx <= canvas_width:
+                        self.preview_canvas.create_line(cx, 0, cx, canvas_height, fill="#e8edf2", width=1)
+                        if idx != 0:
+                            self.preview_canvas.create_text(
+                                cx + 2, canvas_height - 6,
+                                text=f"{wx:.0f}" if grid_step >= 1 else f"{wx:.1f}",
+                                fill="#94a3b8", font=("Segoe UI", 7), anchor="sw"
+                            )
+
+                for idx in range(start_y_idx, end_y_idx + 1):
+                    wy = idx * grid_step
+                    cy = to_canvas_y(wy)
+                    if 0 <= cy <= canvas_height:
+                        self.preview_canvas.create_line(0, cy, canvas_width, cy, fill="#e8edf2", width=1)
+                        if idx != 0:
+                            self.preview_canvas.create_text(
+                                4, cy - 2,
+                                text=f"{wy:.0f}" if grid_step >= 1 else f"{wy:.1f}",
+                                fill="#94a3b8", font=("Segoe UI", 7), anchor="nw"
+                            )
+
+            # 2. Main Axes (+X Red, +Y Green)
+            if self.show_preview_axes_var.get():
+                origin_cx = self._preview_img_offset_x
+                origin_cy = self._preview_img_offset_y
+
+                if 0 <= origin_cy <= canvas_height:
+                    self.preview_canvas.create_line(0, origin_cy, canvas_width, origin_cy, fill="#ef4444", width=1.5)
+                    self.preview_canvas.create_text(canvas_width - 6, origin_cy - 4, text="+X (mm)", fill="#ef4444", font=("Segoe UI", 8, "bold"), anchor="se")
+
+                if 0 <= origin_cx <= canvas_width:
+                    self.preview_canvas.create_line(origin_cx, 0, origin_cx, canvas_height, fill="#10b981", width=1.5)
+                    self.preview_canvas.create_text(origin_cx + 6, 6, text="+Y (mm)", fill="#10b981", font=("Segoe UI", 8, "bold"), anchor="nw")
+
+            # 3. Envelope Bounding Box (Blue dashed)
+            if self.show_detection_tags_var.get():
+                bx1 = to_canvas_x(preview_geo.min_x)
+                by1 = to_canvas_y(preview_geo.max_y)
+                bx2 = to_canvas_x(preview_geo.max_x)
+                by2 = to_canvas_y(preview_geo.min_y)
+                self.preview_canvas.create_rectangle(
+                    bx1, by1, bx2, by2, outline="#0078d4", width=1, dash=(4, 3)
+                )
+                self.preview_canvas.create_text(
+                    bx1 + 4, by1 - 8,
+                    text=f"{preview_geo.width_mm:.1f} x {preview_geo.height_mm:.1f} mm",
+                    fill="#0078d4", font=("Segoe UI", 8, "bold"), anchor="w"
+                )
+
+            # 4. Geometry Entities
+            for line in preview_geo.lines:
+                x1, y1 = line["start"]
+                x2, y2 = line["end"]
+                self.preview_canvas.create_line(
+                    to_canvas_x(x1), to_canvas_y(y1),
+                    to_canvas_x(x2), to_canvas_y(y2),
+                    fill="#1f1f1f", width=2, capstyle="round"
+                )
+
+            for circle in preview_geo.circles:
+                cx, cy = circle["center"]
+                r = circle["radius"]
+                self.preview_canvas.create_oval(
+                    to_canvas_x(cx - r), to_canvas_y(cy + r),
+                    to_canvas_x(cx + r), to_canvas_y(cy - r),
+                    outline="#1f1f1f", width=2
+                )
+
+            for arc in preview_geo.arcs:
+                cx, cy = arc["center"]
+                r = arc["radius"]
+                sa = arc["start_angle"]
+                ea = arc["end_angle"]
+                extent = (ea - sa) % 360
+                if extent == 0:
+                    extent = 360
+                self.preview_canvas.create_arc(
+                    to_canvas_x(cx - r), to_canvas_y(cy + r),
+                    to_canvas_x(cx + r), to_canvas_y(cy - r),
+                    start=sa, extent=extent,
+                    outline="#1f1f1f", width=2, style="arc"
+                )
+
+            for poly in preview_geo.polylines:
+                pts = poly["points"]
+                if len(pts) < 2:
+                    continue
+                flat: list[float] = []
+                for px, py in pts:
+                    flat.extend([to_canvas_x(px), to_canvas_y(py)])
+                if poly.get("closed"):
+                    flat.extend([to_canvas_x(pts[0][0]), to_canvas_y(pts[0][1])])
+                self.preview_canvas.create_line(
+                    *flat, fill="#1f1f1f", width=2, capstyle="round", joinstyle="round"
+                )
+
+            # 5. G54 Origin Crosshair (Red Target)
+            if self.show_detection_tags_var.get():
+                ox = to_canvas_x(0)
+                oy = to_canvas_y(0)
+                if 0 <= ox <= canvas_width and 0 <= oy <= canvas_height:
+                    self.preview_canvas.create_oval(
+                        ox - 6, oy - 6, ox + 6, oy + 6, outline="#d93025", width=2
+                    )
+                    self.preview_canvas.create_line(
+                        ox - 9, oy, ox + 9, oy, fill="#d93025", width=1.5
+                    )
+                    self.preview_canvas.create_line(
+                        ox, oy - 9, ox, oy + 9, fill="#d93025", width=1.5
+                    )
+                    self.preview_canvas.create_text(
+                        ox + 8, oy - 8, text="G54 (0,0)", fill="#d93025", font=("Segoe UI", 8, "bold"), anchor="sw"
+                    )
+
+            # 6. Zoom Badge
+            zoom_pct = int((self._preview_scale / max(1e-4, self._preview_base_scale)) * 100)
+            self.preview_canvas.create_rectangle(6, 6, 120, 24, fill="#1e293b", outline="")
+            self.preview_canvas.create_text(12, 15, text=f"DXF 1:1  |  {zoom_pct}%", fill="white", font=("Segoe UI", 8, "bold"), anchor="w")
+
+            info_text = (
+                f"DXF CAD: {preview_geo.width_mm:.1f} x {preview_geo.height_mm:.1f} mm  |  "
+                f"{image_path.name}  |  {preview_geo.entity_count} entity/contour(s)"
             )
-            self.preview_canvas.create_text(
-                canvas_width // 2,
-                canvas_height // 2 + 14,
-                text="Direct 1:1 Metric CAM Mode (Click 'Generate G-Code' to simulate)",
-                fill=MUTED_COLOR,
-                font=("Segoe UI", 9),
-            )
+            self.preview_info_var.set(info_text)
             return
+
+        self._current_dxf_preview = None
 
         image = cv2.imread(str(image_path)) if image_path.is_file() else None
         if image is None:
@@ -803,16 +1072,21 @@ class ImageToGCodeApp(ttk.Frame):
             self._current_analysis = None
 
         margin = 15
-        scale = min(
+        base_scale = min(
             (canvas_width - 2 * margin) / max(orig_w, 1),
             (canvas_height - 2 * margin) / max(orig_h, 1),
             1.0,
         )
-        self._preview_scale = scale
-        disp_w = max(1, int(orig_w * scale))
-        disp_h = max(1, int(orig_h * scale))
-        self._preview_img_offset_x = (canvas_width - disp_w) / 2.0
-        self._preview_img_offset_y = (canvas_height - disp_h) / 2.0
+        self._preview_base_scale = base_scale
+        if not self._preview_has_custom_transform:
+            self._preview_scale = base_scale
+            disp_w = max(1, int(orig_w * base_scale))
+            disp_h = max(1, int(orig_h * base_scale))
+            self._preview_img_offset_x = (canvas_width - disp_w) / 2.0
+            self._preview_img_offset_y = (canvas_height - disp_h) / 2.0
+
+        disp_w = max(1, int(orig_w * self._preview_scale))
+        disp_h = max(1, int(orig_h * self._preview_scale))
 
         resized_img = cv2.resize(image, (disp_w, disp_h), interpolation=cv2.INTER_AREA)
         success, encoded = cv2.imencode(".png", resized_img)
@@ -828,9 +1102,18 @@ class ImageToGCodeApp(ttk.Frame):
             anchor="nw",
         )
 
+        # Draw Grid & Axes for Calibrated Raster Image
+        if (self.show_preview_grid_var.get() or self.show_preview_axes_var.get()) and self._current_analysis is not None:
+            self._draw_raster_grid_and_axes(canvas_width, canvas_height)
+
         # Draw detection overlays if enabled
         if self.show_detection_tags_var.get() and self._current_analysis is not None:
             self._draw_detection_tags_on_preview()
+
+        # Zoom Badge
+        zoom_pct = int((self._preview_scale / max(1e-4, self._preview_base_scale)) * 100)
+        self.preview_canvas.create_rectangle(6, 6, 100, 24, fill="#1e293b", outline="")
+        self.preview_canvas.create_text(12, 15, text=f"Zoom: {zoom_pct}%", fill="white", font=("Segoe UI", 8, "bold"), anchor="w")
 
         info_parts = [f"{orig_w} x {orig_h} px", image_path.name]
         if self._current_analysis is not None:
@@ -839,6 +1122,58 @@ class ImageToGCodeApp(ttk.Frame):
             if self._current_analysis.contour_count > 0:
                 info_parts.append(f"{self._current_analysis.contour_count} contour(s)")
         self.preview_info_var.set("  |  ".join(info_parts))
+
+    def _draw_raster_grid_and_axes(self, canvas_width: int, canvas_height: int) -> None:
+        analysis = self._current_analysis
+        if analysis is None or analysis.g54_origin_px is None or analysis.scale_factor is None:
+            return
+
+        ox_px, oy_px = analysis.g54_origin_px
+        sf = analysis.scale_factor
+        origin_cx = ox_px * self._preview_scale + self._preview_img_offset_x
+        origin_cy = oy_px * self._preview_scale + self._preview_img_offset_y
+
+        # Grid
+        if self.show_preview_grid_var.get():
+            mm_step = self._calculate_adaptive_grid_step(self._preview_scale * sf)
+            px_step = mm_step * sf * self._preview_scale
+
+            start_x_idx = math.floor((0 - origin_cx) / px_step) - 1
+            end_x_idx = math.ceil((canvas_width - origin_cx) / px_step) + 1
+            for i in range(start_x_idx, end_x_idx + 1):
+                cx = origin_cx + i * px_step
+                if 0 <= cx <= canvas_width:
+                    self.preview_canvas.create_line(cx, 0, cx, canvas_height, fill="#e8edf2", width=1)
+                    if i != 0:
+                        self.preview_canvas.create_text(cx + 2, canvas_height - 6, text=f"{i * mm_step:.0f}", fill="#94a3b8", font=("Segoe UI", 7), anchor="sw")
+
+            start_y_idx = math.floor((0 - origin_cy) / -px_step) - 1
+            end_y_idx = math.ceil((canvas_height - origin_cy) / -px_step) + 1
+            for j in range(start_y_idx, end_y_idx + 1):
+                cy = origin_cy - j * px_step
+                if 0 <= cy <= canvas_height:
+                    self.preview_canvas.create_line(0, cy, canvas_width, cy, fill="#e8edf2", width=1)
+                    if j != 0:
+                        self.preview_canvas.create_text(4, cy - 2, text=f"{j * mm_step:.0f}", fill="#94a3b8", font=("Segoe UI", 7), anchor="nw")
+
+        # Axes
+        if self.show_preview_axes_var.get():
+            if 0 <= origin_cy <= canvas_height:
+                self.preview_canvas.create_line(0, origin_cy, canvas_width, origin_cy, fill="#ef4444", width=1.5)
+                self.preview_canvas.create_text(canvas_width - 6, origin_cy - 4, text="+X (mm)", fill="#ef4444", font=("Segoe UI", 8, "bold"), anchor="se")
+
+            if 0 <= origin_cx <= canvas_width:
+                self.preview_canvas.create_line(origin_cx, 0, origin_cx, canvas_height, fill="#10b981", width=1.5)
+                self.preview_canvas.create_text(origin_cx + 6, 6, text="+Y (mm)", fill="#10b981", font=("Segoe UI", 8, "bold"), anchor="nw")
+
+    def _calculate_adaptive_grid_step(self, pixels_per_unit: float) -> float:
+        min_px = 40.0
+        target = min_px / max(pixels_per_unit, 1e-4)
+        steps = [0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0]
+        for s in steps:
+            if s >= target:
+                return s
+        return 1000.0
 
     def _draw_detection_tags_on_preview(self) -> None:
         analysis = self._current_analysis

@@ -160,6 +160,9 @@ class TestApiEndpoints(unittest.TestCase):
             data_analyze = resp_analyze.json()
             self.assertEqual(data_analyze["contour_count"], 2)
             self.assertEqual(data_analyze["scale_factor"], 1.0)
+            self.assertIsNotNone(data_analyze["dxf_preview"])
+            self.assertEqual(len(data_analyze["dxf_preview"]["circles"]), 1)
+            self.assertEqual(len(data_analyze["dxf_preview"]["polylines"]), 1)
 
             # 2. Test Convert
             resp_convert = self.client.post(
@@ -179,6 +182,7 @@ class TestApiEndpoints(unittest.TestCase):
             self.assertIn("G01", data_convert["gcode"])
             self.assertGreater(len(data_convert["segments"]), 0)
             self.assertEqual(data_convert["filename_base"], "test_part")
+            self.assertIsNotNone(data_convert["analysis"]["dxf_preview"])
         finally:
             try:
                 Path(tmp.name).unlink()
