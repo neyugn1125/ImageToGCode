@@ -1,6 +1,4 @@
-/**
- * Standalone CAD/CAM 2D Toolpath Vector Simulator
- */
+import { i18n } from './i18n.js';
 
 const SIM_GRID_COLOR = '#e2e8f0';
 const SIM_AXIS_X_COLOR = '#ef4444';
@@ -336,7 +334,7 @@ export class CncSimulator {
     ctx.font = '14px Inter, Segoe UI, system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText("No toolpath generated yet. Click 'Generate G-Code' to simulate.", w / 2, h / 2);
+    ctx.fillText(i18n.t('simDefaultText'), w / 2, h / 2);
   }
 
   render() {

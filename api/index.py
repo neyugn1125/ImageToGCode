@@ -22,10 +22,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import cv2
 import ezdxf
-from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile, status
+import secrets
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 
 from api.schemas import (
@@ -461,10 +463,37 @@ app.include_router(api_router, prefix="", include_in_schema=False)
 app.include_router(api_router, prefix="/api/index.py", include_in_schema=False)
 
 
+DOCS_PASSWORD = os.environ.get("DOCS_PASSWORD", "648936")
+docs_security = HTTPBasic(auto_error=False)
+
+
+def verify_docs_password(
+    credentials: Optional[HTTPBasicCredentials] = Depends(docs_security),
+    pwd: Optional[str] = Query(default=None, include_in_schema=False),
+    password: Optional[str] = Query(default=None, include_in_schema=False),
+    token: Optional[str] = Query(default=None, include_in_schema=False),
+) -> bool:
+    """Validate password protection for API Swagger, ReDoc, and OpenAPI documentation."""
+    query_pwd = pwd or password or token
+    if query_pwd and secrets.compare_digest(query_pwd, DOCS_PASSWORD):
+        return True
+
+    if credentials:
+        is_password_valid = secrets.compare_digest(credentials.password, DOCS_PASSWORD)
+        if is_password_valid:
+            return True
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Unauthorized: Incorrect password for ImageToGCode API documentation.",
+        headers={"WWW-Authenticate": 'Basic realm="ImageToGCode API Documentation"'},
+    )
+
+
 @app.get("/api/openapi.json", include_in_schema=False)
 @app.get("/openapi.json", include_in_schema=False)
 @app.get("/api/index.py/openapi.json", include_in_schema=False)
-def custom_openapi_json():
+def custom_openapi_json(_auth: bool = Depends(verify_docs_password)):
     """Return raw OpenAPI schema JSON."""
     return JSONResponse(app.openapi())
 
@@ -474,7 +503,7 @@ def custom_openapi_json():
 @app.get("/api", include_in_schema=False)
 @app.get("/api/index.py", include_in_schema=False)
 @app.get("/api/index.py/docs", include_in_schema=False)
-def custom_swagger_docs(request: Request):
+def custom_swagger_docs(request: Request, _auth: bool = Depends(verify_docs_password)):
     """Serve interactive Swagger UI documentation."""
     openapi_url = "/api/openapi.json" if request.url.path.startswith("/api") else "/openapi.json"
     return get_swagger_ui_html(
@@ -488,7 +517,7 @@ def custom_swagger_docs(request: Request):
 @app.get("/api/redoc", include_in_schema=False)
 @app.get("/redoc", include_in_schema=False)
 @app.get("/api/index.py/redoc", include_in_schema=False)
-def custom_redoc_docs(request: Request):
+def custom_redoc_docs(request: Request, _auth: bool = Depends(verify_docs_password)):
     """Serve ReDoc API documentation."""
     openapi_url = "/api/openapi.json" if request.url.path.startswith("/api") else "/openapi.json"
     return get_redoc_html(

@@ -3,6 +3,8 @@
  * Supports interactive Zoom In/Out, Pan/Drag, Grid, and CNC CAM X/Y Axes
  */
 
+import { i18n } from './i18n.js';
+
 const AXIS_X_COLOR = '#ef4444'; // Red for +X
 const AXIS_Y_COLOR = '#10b981'; // Green for +Y
 const G54_TARGET_COLOR = '#dc2626';
@@ -675,7 +677,7 @@ export class ImagePreviewViewer {
       ctx.font = 'bold 11px Inter, Segoe UI, sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
-      ctx.fillText('G54 (0,0)', g54X + 8, g54Y + 6);
+      ctx.fillText(i18n.t('g54Origin'), g54X + 8, g54Y + 6);
     }
 
     // Badge
@@ -695,7 +697,8 @@ export class ImagePreviewViewer {
   _drawZoomBadge(extraLabel = null) {
     const ctx = this.ctx;
     const zoomPct = Math.round((this.scale / (this.baseScale || 1.0)) * 100);
-    const text = extraLabel ? `${extraLabel} | ${zoomPct}%` : `Zoom: ${zoomPct}%`;
+    const zoomPrefix = i18n.lang === 'vi' ? 'Phóng to' : 'Zoom';
+    const text = extraLabel ? `${extraLabel} | ${zoomPct}%` : `${zoomPrefix}: ${zoomPct}%`;
 
     ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
     ctx.fillRect(8, 8, Math.max(100, text.length * 7 + 16), 22);
@@ -730,7 +733,7 @@ export class ImagePreviewViewer {
       ctx.setLineDash([]);
       ctx.strokeRect(c1x, c1y, boxW, boxH);
 
-      const tagText = '10x10 mm Calib';
+      const tagText = i18n.t('calibTag');
       ctx.fillStyle = '#16a34a';
       ctx.fillRect(c1x, c1y - 18, 90, 18);
       ctx.fillStyle = '#ffffff';

@@ -4,6 +4,7 @@
 
 import { ImagePreviewViewer } from './preview.js';
 import { CncSimulator } from './simulator.js';
+import { i18n } from './i18n.js';
 
 class ImageToGCodeWebApp {
   constructor() {
@@ -14,9 +15,15 @@ class ImageToGCodeWebApp {
     this._initViewers();
     this._bindEvents();
     this._loadDefaultPreset();
+
+    // Initialize UI language
+    i18n.updateDOM();
   }
 
   _initElements() {
+    // Language Toggle
+    this.btnLangToggle = document.getElementById('btn-lang-toggle');
+
     // Form Inputs
     this.imageInput = document.getElementById('image-input');
     this.dropZone = document.getElementById('drop-zone');
@@ -79,6 +86,7 @@ class ImageToGCodeWebApp {
     this.gcodeModal = document.getElementById('gcode-modal');
     this.gcodeModalContent = document.getElementById('gcode-modal-content');
     this.closeModalBtn = document.getElementById('btn-close-modal');
+    this.closeModalBottomBtn = document.getElementById('btn-close-modal-bottom');
     this.copyGcodeBtn = document.getElementById('btn-copy-gcode');
 
     // Status Banner / Toast
@@ -104,11 +112,11 @@ class ImageToGCodeWebApp {
       },
       onStatusUpdate: (state) => {
         const moveNames = {
-          idle: 'Idle',
-          rapid: 'Rapid (G00)',
-          linear: 'Cut (G01)',
-          arc_cw: 'Arc CW (G02)',
-          arc_ccw: 'Arc CCW (G03)'
+          idle: i18n.t('moveIdle'),
+          rapid: i18n.t('moveRapid'),
+          linear: i18n.t('moveLinear'),
+          arc_cw: i18n.t('moveArcCw'),
+          arc_ccw: i18n.t('moveArcCcw')
         };
         const kindLabel = moveNames[state.kind] || state.kind;
         this.simDroReadout.textContent = `X: ${state.x.toFixed(2).padStart(6, ' ')} mm   Y: ${state.y.toFixed(2).padStart(6, ' ')} mm   Z: ${state.z.toFixed(2).padStart(5, ' ')} mm   |   F: ${Math.round(state.feed).toString().padStart(4, ' ')} mm/min   |   ${kindLabel}   |   ${state.currentTime.toFixed(1)}s / ${state.totalTime.toFixed(1)}s (${Math.round(state.progress)}%)`;
@@ -117,6 +125,14 @@ class ImageToGCodeWebApp {
   }
 
   _bindEvents() {
+    // Language Switcher
+    if (this.btnLangToggle) {
+      this.btnLangToggle.addEventListener('click', () => {
+        i18n.toggle();
+        this._updateLanguageUI();
+      });
+    }
+
     // Image Upload
     this.imageInput.addEventListener('change', (e) => {
       if (e.target.files && e.target.files[0]) {
@@ -205,22 +221,22 @@ class ImageToGCodeWebApp {
     // Playback Controls
     this.simPlayBtn.addEventListener('click', () => {
       this.simulator.togglePlay();
-      this.simPlayBtn.textContent = this.simulator.isPlaying ? 'Pause' : 'Play';
+      this.simPlayBtn.textContent = this.simulator.isPlaying ? i18n.t('simPause') : i18n.t('simPlay');
     });
 
     this.simStepBackBtn.addEventListener('click', () => {
       this.simulator.stepBackward();
-      this.simPlayBtn.textContent = 'Play';
+      this.simPlayBtn.textContent = i18n.t('simPlay');
     });
 
     this.simStepForwardBtn.addEventListener('click', () => {
       this.simulator.stepForward();
-      this.simPlayBtn.textContent = 'Play';
+      this.simPlayBtn.textContent = i18n.t('simPlay');
     });
 
     this.simRestartBtn.addEventListener('click', () => {
       this.simulator.restart();
-      this.simPlayBtn.textContent = 'Play';
+      this.simPlayBtn.textContent = i18n.t('simPlay');
     });
 
     this.simRecenterBtn.addEventListener('click', () => {
@@ -236,23 +252,42 @@ class ImageToGCodeWebApp {
 
     this.simScrubber.addEventListener('input', (e) => {
       this.simulator.seek(Number(e.target.value) / 100.0);
-      this.simPlayBtn.textContent = 'Play';
+      this.simPlayBtn.textContent = i18n.t('simPlay');
     });
 
     // Modal Events
-    this.closeModalBtn.addEventListener('click', () => {
-      this.gcodeModal.classList.add('hidden');
-    });
+    if (this.closeModalBtn) {
+      this.closeModalBtn.addEventListener('click', () => {
+        this.gcodeModal.classList.add('hidden');
+      });
+    }
+    if (this.closeModalBottomBtn) {
+      this.closeModalBottomBtn.addEventListener('click', () => {
+        this.gcodeModal.classList.add('hidden');
+      });
+    }
 
     this.copyGcodeBtn.addEventListener('click', async () => {
       if (this.conversionResult && this.conversionResult.gcode) {
         await navigator.clipboard.writeText(this.conversionResult.gcode);
-        this.copyGcodeBtn.textContent = 'Copied!';
+        this.copyGcodeBtn.textContent = i18n.lang === 'vi' ? 'Đã sao chép!' : 'Copied!';
         setTimeout(() => {
-          this.copyGcodeBtn.textContent = 'Copy Code';
+          this.copyGcodeBtn.textContent = i18n.t('btnCopy');
         }, 1800);
       }
     });
+  }
+
+  _updateLanguageUI() {
+    this.previewViewer.render();
+    this.simulator.render();
+    if (!this.selectedFile) {
+      this.previewInfo.textContent = i18n.t('previewDefaultText');
+      this.fileNameDisplay.textContent = i18n.t('noFileSelected');
+    }
+    if (!this.conversionResult) {
+      this.simSummary.textContent = i18n.t('simDefaultText');
+    }
   }
 
   _loadDefaultPreset() {
@@ -347,12 +382,12 @@ class ImageToGCodeWebApp {
 
   async _performConversion() {
     if (!this.selectedFile) {
-      this._showStatus('Please select or upload a drawing image first.', 'warning');
+      this._showStatus(i18n.lang === 'vi' ? 'Vui lòng chọn hoặc tải lên bản vẽ trước.' : 'Please select or upload a drawing image first.', 'warning');
       return;
     }
 
     this._setBusy(true);
-    this._showStatus('Analyzing drawing & generating Fanuc G-code...', 'info');
+    this._showStatus(i18n.t('msgGenerating'), 'info');
 
     const formData = new FormData();
     formData.append('image', this.selectedFile);
@@ -405,9 +440,13 @@ class ImageToGCodeWebApp {
 
       // Summary text
       const t = result.timeline;
-      this.simSummary.textContent = `Envelope: ${t.envelope_width_mm.toFixed(1)} x ${t.envelope_height_mm.toFixed(1)} mm  |  Cut Distance: ${t.cut_distance_mm.toFixed(0)} mm  |  Rapid: ${t.rapid_distance_mm.toFixed(0)} mm  |  Time: ${t.total_time_s.toFixed(1)}s`;
+      if (i18n.lang === 'vi') {
+        this.simSummary.textContent = `Bao phôi: ${t.envelope_width_mm.toFixed(1)} x ${t.envelope_height_mm.toFixed(1)} mm  |  Chiều dài cắt: ${t.cut_distance_mm.toFixed(0)} mm  |  Chạy dao nhanh: ${t.rapid_distance_mm.toFixed(0)} mm  |  Thời gian: ${t.total_time_s.toFixed(1)}s`;
+      } else {
+        this.simSummary.textContent = `Envelope: ${t.envelope_width_mm.toFixed(1)} x ${t.envelope_height_mm.toFixed(1)} mm  |  Cut Distance: ${t.cut_distance_mm.toFixed(0)} mm  |  Rapid: ${t.rapid_distance_mm.toFixed(0)} mm  |  Time: ${t.total_time_s.toFixed(1)}s`;
+      }
 
-      this._showStatus('G-code & CAD Simulation generated successfully!', 'success');
+      this._showStatus(i18n.t('msgSuccess'), 'success');
     } catch (err) {
       this._showStatus(`Error: ${err.message}`, 'error');
     } finally {
@@ -454,12 +493,17 @@ class ImageToGCodeWebApp {
 
   _setBusy(busy) {
     this.generateBtn.disabled = busy;
+    const labelSpan = this.generateBtn.querySelector('span');
     if (busy) {
       this.generateBtn.classList.add('opacity-70', 'cursor-not-allowed');
-      this.generateBtn.textContent = 'Generating G-Code...';
+      if (labelSpan) {
+        labelSpan.textContent = i18n.lang === 'vi' ? 'Đang tạo mã G-Code...' : 'Generating G-Code...';
+      }
     } else {
       this.generateBtn.classList.remove('opacity-70', 'cursor-not-allowed');
-      this.generateBtn.textContent = 'Generate G-Code';
+      if (labelSpan) {
+        labelSpan.textContent = i18n.t('btnGenerate');
+      }
     }
   }
 
@@ -480,4 +524,3 @@ class ImageToGCodeWebApp {
 document.addEventListener('DOMContentLoaded', () => {
   new ImageToGCodeWebApp();
 });
-

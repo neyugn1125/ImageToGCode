@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -31,14 +31,25 @@
           NC
         </div>
         <div>
-          <h1 class="text-lg font-bold text-slate-900 leading-tight">Image to G-Code <span class="text-blue-600 font-semibold">| Fanuc CNC</span></h1>
-          <p class="text-xs text-slate-500 hidden sm:block">Automatic 2D calibration, contour hierarchy sequencing, and standalone CAM simulation</p>
+          <h1 class="text-lg font-bold text-slate-900 leading-tight">
+            <span data-i18n="appTitle">Chuyển ảnh sang G-Code</span>
+            <span class="text-blue-600 font-semibold">| Fanuc CNC</span>
+          </h1>
+          <p class="text-xs text-slate-500 hidden sm:block" data-i18n="appSubtitle">
+            Tự động nhận diện biên dạng, phân cấp cắt gọt và mô phỏng CAM chuẩn Fanuc CNC
+          </p>
         </div>
       </div>
       <div class="flex items-center gap-2">
+        <!-- Language Switcher Toggle -->
+        <button id="btn-lang-toggle" title="Chuyển đổi ngôn ngữ / Switch Language" class="text-xs text-slate-700 hover:text-blue-600 px-3 py-1.5 rounded-md border border-slate-200 hover:border-blue-300 font-semibold flex items-center gap-1.5 transition bg-slate-50 cursor-pointer shadow-sm">
+          <span id="lang-flag">🇻🇳</span>
+          <span id="lang-text">Tiếng Việt</span>
+        </button>
+
         <a href="/api/docs" target="_blank" class="text-xs text-slate-600 hover:text-blue-600 px-3 py-1.5 rounded-md border border-slate-200 hover:border-blue-300 font-medium flex items-center gap-1.5 transition">
           <i data-lucide="file-code" class="w-3.5 h-3.5"></i>
-          <span>API Docs</span>
+          <span data-i18n="apiDocs">Tài liệu API</span>
         </a>
       </div>
     </div>
@@ -57,22 +68,22 @@
         <div>
           <div class="flex items-center gap-2 mb-3">
             <i data-lucide="file-code" class="w-4 h-4 text-blue-600"></i>
-            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">1. Input Drawing or DXF</h2>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec1Title">1. Bản vẽ đầu vào hoặc File DXF</h2>
           </div>
 
           <!-- Drop Zone -->
           <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-lg p-4 text-center cursor-pointer transition bg-slate-50 flex flex-col items-center justify-center relative">
             <input type="file" id="image-input" accept=".png,.jpg,.jpeg,.bmp,.tif,.tiff,.dxf" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
             <i data-lucide="upload-cloud" class="w-7 h-7 text-slate-400 mb-2"></i>
-            <span class="text-xs font-semibold text-slate-700">Click to upload or drag & drop</span>
-            <span class="text-[11px] text-slate-400 mt-0.5">PNG, JPG, BMP, TIFF, DXF</span>
-            <div id="file-name-display" class="text-xs text-blue-600 font-medium mt-2 truncate max-w-[220px]">No file chosen</div>
+            <span class="text-xs font-semibold text-slate-700" data-i18n="dropPrompt">Kéo thả bản vẽ hoặc file DXF vào đây</span>
+            <span class="text-[11px] text-slate-400 mt-0.5" data-i18n="dropFormats">Hỗ trợ định dạng PNG, JPG, BMP, TIFF, DXF</span>
+            <div id="file-name-display" class="text-xs text-blue-600 font-medium mt-2 truncate max-w-[220px]" data-i18n="noFileSelected">Chưa chọn file</div>
           </div>
 
           <!-- Strip Dimensions Checkbox -->
           <label class="flex items-center gap-2 mt-3 text-xs text-slate-700 cursor-pointer select-none">
             <input type="checkbox" id="strip-dimensions" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4" />
-            <span>Remove dimension annotations (Image mode)</span>
+            <span data-i18n="stripDimensions">Loại bỏ đường gióng kích thước & chữ ký hiệu</span>
           </label>
         </div>
 
@@ -82,21 +93,20 @@
         <div>
           <div class="flex items-center gap-2 mb-2">
             <i data-lucide="ruler" class="w-4 h-4 text-blue-600"></i>
-            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">2. Scale Reference (Optional)</h2>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec2Title">2. Căn chỉnh tỷ lệ & Kích thước</h2>
           </div>
-          <p class="text-[11px] text-slate-500 mb-3">For drawings without embedded 10x10mm calibration square.</p>
 
           <div class="space-y-2">
             <div class="flex items-center justify-between gap-2">
-              <label for="ref-width" class="text-xs text-slate-600">Reference width (mm)</label>
+              <label for="ref-width" class="text-xs text-slate-600" data-i18n="refWidth">Chiều rộng thực tế (mm)</label>
               <input type="number" step="any" id="ref-width" placeholder="e.g. 100" class="w-24 text-right text-xs px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="ref-height" class="text-xs text-slate-600">Reference height (mm)</label>
+              <label for="ref-height" class="text-xs text-slate-600" data-i18n="refHeight">Chiều cao thực tế (mm)</label>
               <input type="number" step="any" id="ref-height" placeholder="e.g. 80" class="w-24 text-right text-xs px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="pixels-per-mm" class="text-xs text-slate-600">Pixels per mm (px/mm)</label>
+              <label for="pixels-per-mm" class="text-xs text-slate-600" data-i18n="pixelsPerMm">Tỷ lệ pixel / mm (px/mm)</label>
               <input type="number" step="any" id="pixels-per-mm" placeholder="e.g. 5.0" class="w-24 text-right text-xs px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
@@ -108,48 +118,48 @@
         <div>
           <div class="flex items-center gap-2 mb-3">
             <i data-lucide="settings-2" class="w-4 h-4 text-blue-600"></i>
-            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">3. Machining & Tool</h2>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec3Title">3. Thông số gia công & Dao cụ</h2>
           </div>
 
           <div class="space-y-2 text-xs">
             <div class="flex items-center justify-between gap-2">
-              <label for="cut-depth" class="text-slate-600">Cut depth Z (mm)</label>
+              <label for="cut-depth" class="text-slate-600" data-i18n="cutDepth">Chiều sâu cắt Z (mm)</label>
               <input type="number" step="any" id="cut-depth" value="-5.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="plunge-feed" class="text-slate-600">Plunge feed (mm/min)</label>
+              <label for="plunge-feed" class="text-slate-600" data-i18n="plungeFeed">Bước tiến xuống dao (mm/phút)</label>
               <input type="number" step="any" id="plunge-feed" value="100.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="cut-feed" class="text-slate-600">Cut feed (mm/min)</label>
+              <label for="cut-feed" class="text-slate-600" data-i18n="cutFeed">Bước tiến cắt (mm/phút)</label>
               <input type="number" step="any" id="cut-feed" value="300.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="spindle-rpm" class="text-slate-600">Spindle RPM</label>
+              <label for="spindle-rpm" class="text-slate-600" data-i18n="spindleRpm">Tốc độ trục chính (vòng/phút)</label>
               <input type="number" id="spindle-rpm" value="1500" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="safe-z" class="text-slate-600">Safe Z (mm)</label>
+              <label for="safe-z" class="text-slate-600" data-i18n="safeZ">Cao độ an toàn Safe Z (mm)</label>
               <input type="number" step="any" id="safe-z" value="50.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="approach-z" class="text-slate-600">Approach Z (mm)</label>
+              <label for="approach-z" class="text-slate-600" data-i18n="approachZ">Cao độ tiếp cận Approach Z (mm)</label>
               <input type="number" step="any" id="approach-z" value="2.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="tool-dia" class="text-slate-600 font-semibold text-blue-700">Tool diameter Ø (mm)</label>
+              <label for="tool-dia" class="text-slate-600 font-semibold text-blue-700" data-i18n="toolDia">Đường kính dao Ø (mm)</label>
               <input type="number" step="any" id="tool-dia" value="3.0" class="w-24 text-right font-bold text-blue-700 px-2.5 py-1.5 border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="tool-number" class="text-slate-600">Tool number (T)</label>
+              <label for="tool-number" class="text-slate-600" data-i18n="toolNum">Số hiệu dao (T)</label>
               <input type="number" id="tool-number" value="1" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="tool-offset" class="text-slate-600">Tool offset (H)</label>
+              <label for="tool-offset" class="text-slate-600" data-i18n="toolOffset">Bù chiều dài dao (H)</label>
               <input type="number" id="tool-offset" value="1" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="program-number" class="text-slate-600">Program number (O)</label>
+              <label for="program-number" class="text-slate-600" data-i18n="programNum">Số chương trình (O)</label>
               <input type="number" id="program-number" value="1000" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
@@ -159,12 +169,12 @@
 
       <!-- Pinned Action Buttons Row -->
       <div class="flex flex-col gap-2">
-        <button id="btn-generate" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center gap-2">
+        <button id="btn-generate" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center gap-2 cursor-pointer">
           <i data-lucide="play" class="w-4 h-4 fill-current"></i>
-          <span>Generate G-Code</span>
+          <span data-i18n="btnGenerate">Tạo mã G-Code</span>
         </button>
-        <button id="btn-reset" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs py-2 px-3 rounded-lg border border-slate-200 transition">
-          Reset defaults
+        <button id="btn-reset" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs py-2 px-3 rounded-lg border border-slate-200 transition cursor-pointer" data-i18n="btnReset">
+          Mặc định
         </button>
       </div>
 
@@ -181,20 +191,20 @@
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-blue-600"></span>
-            <h3 class="text-sm font-bold text-slate-900">1. Image & DXF Preview (Source Drawing & Analysis)</h3>
+            <h3 class="text-sm font-bold text-slate-900" data-i18n="previewTitle">1. Xem trước Bản vẽ & DXF (Nhận diện & Tọa độ)</h3>
           </div>
           <div class="flex items-center gap-3 text-xs text-slate-600 select-none">
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-show-tags" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span>Tags (G54/Env)</span>
+              <span data-i18n="tagDetection">Nhãn (G54/Bao)</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-preview-grid" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span>Grid</span>
+              <span data-i18n="tagGrid">Lưới</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-preview-axes" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span>Axes (+X/+Y)</span>
+              <span data-i18n="tagAxes">Trục (+X/+Y)</span>
             </label>
           </div>
         </div>
@@ -205,21 +215,21 @@
 
           <!-- Floating Zoom Controls -->
           <div class="absolute top-2 right-2 flex items-center gap-1 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-lg p-1 shadow-sm opacity-80 group-hover:opacity-100 transition">
-            <button id="btn-preview-zoom-in" title="Zoom In (+)" class="w-6 h-6 flex items-center justify-center text-xs font-bold text-slate-700 hover:bg-slate-100 rounded transition">
+            <button id="btn-preview-zoom-in" title="Phóng to / Zoom In (+)" class="w-6 h-6 flex items-center justify-center text-xs font-bold text-slate-700 hover:bg-slate-100 rounded transition cursor-pointer">
               +
             </button>
-            <button id="btn-preview-zoom-out" title="Zoom Out (-)" class="w-6 h-6 flex items-center justify-center text-xs font-bold text-slate-700 hover:bg-slate-100 rounded transition">
+            <button id="btn-preview-zoom-out" title="Thu nhỏ / Zoom Out (-)" class="w-6 h-6 flex items-center justify-center text-xs font-bold text-slate-700 hover:bg-slate-100 rounded transition cursor-pointer">
               -
             </button>
-            <button id="btn-preview-fit" title="Fit View (Double-click)" class="px-2 h-6 flex items-center justify-center text-[10px] font-bold text-slate-700 hover:bg-slate-100 rounded transition">
-              Fit
+            <button id="btn-preview-fit" title="Căn vừa khung / Fit View" class="px-2 h-6 flex items-center justify-center text-[10px] font-bold text-slate-700 hover:bg-slate-100 rounded transition cursor-pointer" data-i18n="previewFit">
+              Vừa khung
             </button>
           </div>
         </div>
 
         <!-- Preview Footer -->
         <div class="flex items-center justify-between text-xs text-slate-500 font-medium pt-1">
-          <div id="preview-info">Select an image or DXF to preview (Scroll: Zoom | Drag: Pan | Dbl-click: Fit)</div>
+          <div id="preview-info" data-i18n="previewDefaultText">Chọn ảnh bản vẽ hoặc file DXF để xem trước (Cuộn: Zoom | Kéo: Pan | Nhấp đúp: Vừa khung)</div>
           <div id="preview-coords" class="font-mono-cad text-slate-700"></div>
         </div>
       </div>
@@ -231,26 +241,26 @@
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
-            <h3 class="text-sm font-bold text-slate-900">2. Toolpath Simulation (Clean CAD/CAM View)</h3>
+            <h3 class="text-sm font-bold text-slate-900" data-i18n="simTitle">2. Mô phỏng đường chạy dao (Màn hình CAD/CAM)</h3>
           </div>
 
           <!-- Toggles -->
           <div class="flex items-center gap-4 text-xs text-slate-600">
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-grid" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span>Grid & Axes</span>
+              <span data-i18n="simGrid">Lưới & Trục</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-rapids" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span>Rapids (G00)</span>
+              <span data-i18n="simRapids">Chạy dao nhanh (G00)</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-arrows" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span>Direction Arrows</span>
+              <span data-i18n="simArrows">Mũi tên hướng cắt</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-cutter" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span>Cutter (Ø)</span>
+              <span data-i18n="simCutter">Đầu dao (Ø)</span>
             </label>
           </div>
         </div>
@@ -264,31 +274,31 @@
         <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
           
           <div class="flex items-center gap-1.5">
-            <button id="btn-sim-play" disabled class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md text-xs font-bold transition shadow-sm">
-              Play
+            <button id="btn-sim-play" disabled class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md text-xs font-bold transition shadow-sm cursor-pointer" data-i18n="simPlay">
+              Phát
             </button>
-            <button id="btn-sim-step-back" disabled title="Step Back" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition">
+            <button id="btn-sim-step-back" disabled title="Bước lùi / Step Back" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition cursor-pointer">
               |&lt;
             </button>
-            <button id="btn-sim-step-forward" disabled title="Step Forward" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition">
+            <button id="btn-sim-step-forward" disabled title="Bước tới / Step Forward" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition cursor-pointer">
               &gt;|
             </button>
-            <button id="btn-sim-restart" disabled class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition">
-              Restart
+            <button id="btn-sim-restart" disabled class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition cursor-pointer" data-i18n="simRestart">
+              Bắt đầu lại
             </button>
 
             <!-- Speed control -->
             <div class="flex items-center gap-1.5 ml-3">
-              <span class="text-[11px] text-slate-500 font-medium">Speed:</span>
+              <span class="text-[11px] text-slate-500 font-medium" data-i18n="simSpeed">Tốc độ:</span>
               <input type="range" id="sim-speed-slider" min="1" max="50" value="5" class="w-20 cursor-pointer" />
               <span id="sim-speed-label" class="text-xs font-bold text-slate-700 w-7">5x</span>
             </div>
           </div>
 
           <div>
-            <button id="btn-sim-recenter" class="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition flex items-center gap-1.5">
+            <button id="btn-sim-recenter" class="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition flex items-center gap-1.5 cursor-pointer">
               <i data-lucide="maximize" class="w-3.5 h-3.5"></i>
-              <span>Recenter</span>
+              <span data-i18n="simRecenter">Căn giữa</span>
             </button>
           </div>
         </div>
@@ -300,32 +310,32 @@
 
         <!-- Realtime DRO Monospace Readout -->
         <div class="bg-slate-900 text-emerald-400 p-2.5 rounded-lg font-mono-cad text-xs tracking-tight overflow-x-auto shadow-inner flex items-center justify-between min-h-[36px]">
-          <span id="sim-dro-readout">Idle</span>
+          <span id="sim-dro-readout">Sẵn sàng</span>
         </div>
 
         <!-- Summary text -->
-        <div id="sim-summary" class="text-xs text-slate-500 font-medium">
-          No simulation yet
+        <div id="sim-summary" class="text-xs text-slate-500 font-medium" data-i18n="simDefaultText">
+          Chưa có đường chạy dao. Bấm 'Tạo mã G-Code' để bắt đầu mô phỏng.
         </div>
       </div>
 
       <!-- 3. DOWNLOAD & EXPORT BAR -->
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-wrap items-center justify-between gap-3">
         <div class="text-xs text-slate-600">
-          <span class="font-bold text-slate-900">Output Formats:</span> Fanuc G-Code (.NC) with ISO 6983 standard &amp; 2D CAD (.DXF)
+          <span class="font-bold text-slate-900">Output Formats:</span> Fanuc G-Code (.NC) ISO 6983 &amp; 2D CAD (.DXF)
         </div>
         <div class="flex items-center gap-2">
-          <button id="btn-view-gcode" disabled class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5">
+          <button id="btn-view-gcode" disabled class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5 cursor-pointer">
             <i data-lucide="code" class="w-4 h-4"></i>
-            <span>View G-Code</span>
+            <span data-i18n="btnViewGcode">Xem mã G-Code</span>
           </button>
-          <button id="btn-download-dxf" disabled class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5">
+          <button id="btn-download-dxf" disabled class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5 cursor-pointer">
             <i data-lucide="download" class="w-4 h-4"></i>
-            <span>Download DXF</span>
+            <span data-i18n="btnDownloadDxf">Tải file .DXF</span>
           </button>
-          <button id="btn-download-nc" disabled class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
+          <button id="btn-download-nc" disabled class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer">
             <i data-lucide="download" class="w-4 h-4"></i>
-            <span>Download G-Code (.NC)</span>
+            <span data-i18n="btnDownloadNc">Tải file .NC</span>
           </button>
         </div>
       </div>
@@ -339,30 +349,29 @@
       <div class="flex items-center justify-between p-4 border-b border-slate-200">
         <div class="flex items-center gap-2">
           <i data-lucide="file-text" class="w-5 h-5 text-blue-600"></i>
-          <h3 class="font-bold text-slate-900">Generated Fanuc G-Code</h3>
+          <h3 class="font-bold text-slate-900" data-i18n="modalTitle">Mã G-Code Fanuc CNC xuất ra</h3>
         </div>
         <div class="flex items-center gap-2">
-          <button id="btn-copy-gcode" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition border border-blue-200 flex items-center gap-1">
+          <button id="btn-copy-gcode" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition border border-blue-200 flex items-center gap-1 cursor-pointer">
             <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-            <span>Copy Code</span>
+            <span data-i18n="btnCopy">Sao chép mã</span>
           </button>
-          <button id="btn-close-modal" class="p-1 text-slate-400 hover:text-slate-600 rounded-lg">
+          <button id="btn-close-modal" class="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer">
             <i data-lucide="x" class="w-5 h-5"></i>
           </button>
         </div>
       </div>
-      <div class="p-4 flex-1 overflow-y-auto bg-slate-950">
-        <pre id="gcode-modal-content" class="font-mono-cad text-emerald-400 text-xs leading-relaxed"></pre>
+      <div class="p-4 flex-1 overflow-auto bg-slate-950">
+        <pre id="gcode-modal-content" class="font-mono-cad text-emerald-400 text-xs leading-relaxed select-all"></pre>
+      </div>
+      <div class="p-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+        <button id="btn-close-modal-bottom" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer" data-i18n="btnClose">
+          Đóng
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- Lucide Icon Initialization -->
-  <script>
-    lucide.createIcons();
-  </script>
-  <!-- Main App Module -->
   <script type="module" src="/js/app.js"></script>
 </body>
 </html>
-
