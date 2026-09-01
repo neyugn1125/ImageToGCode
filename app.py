@@ -51,6 +51,29 @@ ACCENT_COLOR = "#0067c0"
 SUCCESS_COLOR = "#107c10"
 ERROR_COLOR = "#c42b1c"
 
+
+def enable_high_dpi_awareness() -> None:
+    """Enable high-DPI awareness on Windows so the UI renders crisply at native resolution."""
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+            try:
+                # PROCESS_PER_MONITOR_DPI_AWARE = 2 (Windows 8.1+)
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            except (AttributeError, OSError):
+                try:
+                    # PROCESS_SYSTEM_DPI_AWARE = 1
+                    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+                except (AttributeError, OSError):
+                    ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+
+# Enable DPI awareness before any Tk instance is created
+enable_high_dpi_awareness()
+
+
 # CAD Simulation Palette
 SIM_CANVAS_BG = "#ffffff"
 SIM_GRID_COLOR = "#e9ecef"
@@ -78,14 +101,88 @@ GUI_DEFAULT_OUTPUT_PATH = APP_DIRECTORY / DEFAULT_OUTPUT_PATH
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 
 
+class ScrollableFrame(ttk.Frame):
+    """A clean ttk container that supports vertical scrolling with mouse wheel and scrollbar."""
+
+    def __init__(self, parent: tk.Widget, *args: object, **kwargs: object) -> None:
+        super().__init__(parent, *args, **kwargs)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        self.canvas = tk.Canvas(
+            self,
+            background=WINDOW_BACKGROUND,
+            highlightthickness=0,
+            borderwidth=0,
+        )
+        self.scrollbar = ttk.Scrollbar(
+            self, orient="vertical", command=self.canvas.yview
+        )
+        self.scrollable_content = ttk.Frame(self.canvas, style="TFrame")
+        self.scrollable_content.columnconfigure(0, weight=1)
+
+        self._canvas_window = self.canvas.create_window(
+            (0, 0), window=self.scrollable_content, anchor="nw"
+        )
+
+        self.canvas.configure(yscrollcommand=self._on_yscroll)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.scrollbar.grid(row=0, column=1, sticky="ns")
+
+        self.scrollable_content.bind("<Configure>", self._on_content_configure)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+
+        self.bind_mousewheel_tree(self)
+
+    def _on_yscroll(self, first: str, last: str) -> None:
+        f, l = float(first), float(last)
+        if f <= 0.0 and l >= 1.0:
+            self.scrollbar.grid_remove()
+        else:
+            self.scrollbar.grid()
+        self.scrollbar.set(first, last)
+
+    def _on_content_configure(self, _event: tk.Event) -> None:
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event: tk.Event) -> None:
+        self.canvas.itemconfig(self._canvas_window, width=event.width)
+
+    def _on_mousewheel(self, event: tk.Event) -> None:
+        bbox = self.canvas.bbox("all")
+        if bbox and (bbox[3] - bbox[1]) > self.canvas.winfo_height():
+            if getattr(event, "num", None) == 4 or getattr(event, "delta", 0) > 0:
+                self.canvas.yview_scroll(-2, "units")
+            else:
+                self.canvas.yview_scroll(2, "units")
+
+    def bind_mousewheel_tree(self, widget: tk.Widget | None = None) -> None:
+        """Bind mouse wheel scrolling recursively across widget and all its children."""
+        target = widget if widget is not None else self
+        target.bind("<MouseWheel>", self._on_mousewheel, add="+")
+        target.bind("<Button-4>", self._on_mousewheel, add="+")
+        target.bind("<Button-5>", self._on_mousewheel, add="+")
+        for child in target.winfo_children():
+            if child not in (self.scrollbar,):
+                self.bind_mousewheel_tree(child)
+
 
 class ImageToGCodeApp(ttk.Frame):
     """Desktop interface with dual separated Image Preview and Toolpath Simulation."""
 
     def __init__(self, root: tk.Tk) -> None:
         root.title("Image to G-Code | Fanuc CNC")
-        root.geometry("1180x920")
-        root.minsize(980, 780)
+
+        # Responsive initial size adapted to screen resolution and DPI
+        screen_w = root.winfo_screenwidth()
+        screen_h = root.winfo_screenheight()
+        init_w = min(1200, max(980, int(screen_w * 0.75)))
+        init_h = min(920, max(680, int(screen_h * 0.85)))
+        min_w = min(980, max(750, int(screen_w * 0.65)))
+        min_h = min(720, max(540, int(screen_h * 0.65)))
+
+        root.geometry(f"{init_w}x{init_h}")
+        root.minsize(min_w, min_h)
         root.configure(bg=WINDOW_BACKGROUND)
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
@@ -162,6 +259,7 @@ class ImageToGCodeApp(ttk.Frame):
 
         self._configure_styles()
         self._build_ui()
+        self.root.update_idletasks()
         self._load_preview(Path(self.input_var.get()))
         self.root.after(100, self._poll_results)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
@@ -238,14 +336,20 @@ class ImageToGCodeApp(ttk.Frame):
         content.rowconfigure(0, weight=1)
 
         # ----------------- LEFT COLUMN: CONTROLS & PARAMETERS -----------------
-        left_column = ttk.Frame(content, style="TFrame", width=350)
+        left_column = ttk.Frame(content, style="TFrame", width=360)
         left_column.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         left_column.columnconfigure(0, weight=1)
+        left_column.rowconfigure(0, weight=1)  # Scrollable parameters area
+        left_column.rowconfigure(1, weight=0)  # Pinned action buttons
+
+        self.param_scroll_frame = ScrollableFrame(left_column, style="TFrame")
+        self.param_scroll_frame.grid(row=0, column=0, sticky="nsew")
+        scroll_content = self.param_scroll_frame.scrollable_content
 
         paths_panel = ttk.LabelFrame(
-            left_column, text="Files", style="Panel.TLabelframe", padding=10
+            scroll_content, text="Files", style="Panel.TLabelframe", padding=10
         )
-        paths_panel.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        paths_panel.grid(row=0, column=0, sticky="ew", pady=(0, 8), padx=(0, 2))
         paths_panel.columnconfigure(1, weight=1)
         self.input_browse_button = self._path_row(
             paths_panel, 0, "Input image", self.input_var, self._choose_input
@@ -265,9 +369,9 @@ class ImageToGCodeApp(ttk.Frame):
         )
 
         scale_panel = ttk.LabelFrame(
-            left_column, text="Scale reference (optional)", style="Panel.TLabelframe", padding=10
+            scroll_content, text="Scale reference (optional)", style="Panel.TLabelframe", padding=10
         )
-        scale_panel.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        scale_panel.grid(row=1, column=0, sticky="ew", pady=(0, 8), padx=(0, 2))
         scale_panel.columnconfigure(0, weight=1)
         scale_fields = [
             ("Reference width (mm)", self.reference_width_var),
@@ -284,9 +388,9 @@ class ImageToGCodeApp(ttk.Frame):
             )
 
         settings = ttk.LabelFrame(
-            left_column, text="Machining & Tool parameters", style="Panel.TLabelframe", padding=10
+            scroll_content, text="Machining & Tool parameters", style="Panel.TLabelframe", padding=10
         )
-        settings.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        settings.grid(row=2, column=0, sticky="ew", pady=(0, 8), padx=(0, 2))
         settings.columnconfigure(0, weight=1)
         fields = [
             ("Cut depth Z (mm)", self.cut_depth_var),
@@ -310,7 +414,7 @@ class ImageToGCodeApp(ttk.Frame):
             )
 
         button_row = ttk.Frame(left_column, style="TFrame")
-        button_row.grid(row=3, column=0, sticky="sew")
+        button_row.grid(row=1, column=0, sticky="sew", pady=(8, 0))
         self.generate_button = ttk.Button(
             button_row,
             text="Generate G-Code",
@@ -326,6 +430,8 @@ class ImageToGCodeApp(ttk.Frame):
             button_row, text="Open output folder", command=self._open_output_folder
         )
         self.open_output_button.pack(fill="x", pady=(5, 0))
+
+        self.param_scroll_frame.bind_mousewheel_tree()
 
         # ----------------- RIGHT COLUMN: 2 SEPARATE PANELS -----------------
         right_panel = ttk.Frame(content, style="TFrame")
@@ -1509,6 +1615,7 @@ class ImageToGCodeApp(ttk.Frame):
 
 
 def main() -> None:
+    enable_high_dpi_awareness()
     root = tk.Tk()
     ImageToGCodeApp(root)
     root.mainloop()
