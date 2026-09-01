@@ -18,7 +18,6 @@ import cv2
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from api.schemas import (
     ConversionResponse,
@@ -292,10 +291,3 @@ async def convert_image(
                     p.unlink()
                 except OSError:
                     pass
-
-
-# Mount static files from public/ to serve frontend at root /
-PUBLIC_DIR = PROJECT_ROOT / "public"
-if PUBLIC_DIR.is_dir():
-    app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="static")
-
