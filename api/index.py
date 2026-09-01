@@ -65,21 +65,29 @@ app.add_middleware(
 
 @app.middleware("http")
 async def normalize_vercel_paths(request: Request, call_next):
-    """Restore original requested path from Vercel headers if rewritten."""
-    orig_path = (
-        request.headers.get("x-matched-path")
-        or request.headers.get("x-forwarded-uri")
-        or request.scope.get("path", "")
-    )
-    if orig_path:
-        clean_path = orig_path.split("?")[0]
-        if clean_path.startswith("/api/index.py/"):
-            clean_path = clean_path.replace("/api/index.py", "/api", 1)
-        elif clean_path == "/api/index.py":
-            clean_path = "/api"
-        request.scope["path"] = clean_path
+    """Restore original requested path from Vercel query or headers if rewritten."""
+    # 1. Check if __path__ query param was passed by vercel.json rewrite
+    query_path = request.query_params.get("__path__")
+    if query_path:
+        clean_sub = query_path.lstrip("/")
+        request.scope["path"] = f"/api/{clean_sub}"
+    else:
+        # 2. Check headers or existing scope path
+        orig_path = (
+            request.headers.get("x-matched-path")
+            or request.headers.get("x-forwarded-uri")
+            or request.scope.get("path", "")
+        )
+        if orig_path:
+            clean_path = orig_path.split("?")[0]
+            if clean_path.startswith("/api/index.py/"):
+                clean_path = clean_path.replace("/api/index.py", "/api", 1)
+            elif clean_path in ("/api/index.py", "/api"):
+                clean_path = "/api/docs" if request.method == "GET" else clean_path
+            request.scope["path"] = clean_path
 
     return await call_next(request)
+
 
 
 
@@ -342,6 +350,8 @@ def custom_openapi_json():
 
 @app.get("/api/docs", include_in_schema=False)
 @app.get("/docs", include_in_schema=False)
+@app.get("/api", include_in_schema=False)
+@app.get("/api/index.py", include_in_schema=False)
 @app.get("/api/index.py/docs", include_in_schema=False)
 def custom_swagger_docs(request: Request):
     """Serve interactive Swagger UI documentation."""
