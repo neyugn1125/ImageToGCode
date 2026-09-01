@@ -65,13 +65,22 @@ app.add_middleware(
 
 @app.middleware("http")
 async def normalize_vercel_paths(request: Request, call_next):
-    """Normalize paths if Vercel serverless forwards internal function path."""
-    path = request.scope.get("path", "")
-    if path == "/api/index.py":
-        request.scope["path"] = "/api"
-    elif path.startswith("/api/index.py/"):
-        request.scope["path"] = path.replace("/api/index.py", "/api", 1)
+    """Restore original requested path from Vercel headers if rewritten."""
+    orig_path = (
+        request.headers.get("x-matched-path")
+        or request.headers.get("x-forwarded-uri")
+        or request.scope.get("path", "")
+    )
+    if orig_path:
+        clean_path = orig_path.split("?")[0]
+        if clean_path.startswith("/api/index.py/"):
+            clean_path = clean_path.replace("/api/index.py", "/api", 1)
+        elif clean_path == "/api/index.py":
+            clean_path = "/api"
+        request.scope["path"] = clean_path
+
     return await call_next(request)
+
 
 
 def _validate_image_file(file: UploadFile) -> str:
