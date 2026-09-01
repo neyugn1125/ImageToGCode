@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -53,7 +54,7 @@ class TestApiEndpoints(unittest.TestCase):
             files={"image": ("test.txt", b"not an image", "text/plain")},
         )
         self.assertEqual(response.status_code, 400)
-        self.assertIn("Unsupported image type", response.json()["detail"])
+        self.assertIn("Unsupported file type", response.json()["detail"])
 
     def test_convert_sample_image(self) -> None:
         self.assertTrue(SAMPLE_PLATE.is_file(), f"Sample image not found: {SAMPLE_PLATE}")
@@ -135,6 +136,56 @@ class TestApiEndpoints(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_direct_dxf_analyze_and_convert(self) -> None:
+        import ezdxf
+        from ezdxf import units
+
+        doc = ezdxf.new("R2010")
+        doc.units = units.MM
+        msp = doc.modelspace()
+        msp.add_circle((10.0, 10.0), 5.0)
+        msp.add_lwpolyline([(0, 0), (20, 0), (20, 20), (0, 20)], close=True)
+
+        with tempfile.NamedTemporaryFile(suffix=".dxf", delete=False) as tmp:
+            doc.saveas(tmp.name)
+            dxf_bytes = Path(tmp.name).read_bytes()
+
+        try:
+            # 1. Test Analyze
+            resp_analyze = self.client.post(
+                "/api/analyze",
+                files={"image": ("test_part.dxf", dxf_bytes, "application/dxf")},
+            )
+            self.assertEqual(resp_analyze.status_code, 200)
+            data_analyze = resp_analyze.json()
+            self.assertEqual(data_analyze["contour_count"], 2)
+            self.assertEqual(data_analyze["scale_factor"], 1.0)
+
+            # 2. Test Convert
+            resp_convert = self.client.post(
+                "/api/convert",
+                files={"image": ("test_part.dxf", dxf_bytes, "application/dxf")},
+                data={
+                    "cut_depth": "-3.0",
+                    "cut_feed": "250.0",
+                    "safe_z": "30.0",
+                    "approach_z": "2.0",
+                },
+            )
+            self.assertEqual(resp_convert.status_code, 200)
+            data_convert = resp_convert.json()
+            self.assertTrue(data_convert["success"])
+            self.assertIn("G02", data_convert["gcode"])
+            self.assertIn("G01", data_convert["gcode"])
+            self.assertGreater(len(data_convert["segments"]), 0)
+            self.assertEqual(data_convert["filename_base"], "test_part")
+        finally:
+            try:
+                Path(tmp.name).unlink()
+            except OSError:
+                pass
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -161,45 +161,91 @@ def generate_gcode_from_dxf(
             entity_count += 1
             continue
 
-        if entity_type != "LWPOLYLINE":
+        if entity_type == "LINE":
+            start_x, start_y = _validated_xy(
+                entity.dxf.start.x * scale_to_mm,
+                entity.dxf.start.y * scale_to_mm,
+            )
+            end_x, end_y = _validated_xy(
+                entity.dxf.end.x * scale_to_mm,
+                entity.dxf.end.y * scale_to_mm,
+            )
+            lines.extend(
+                [
+                    f"G00 X{_format_float(start_x)} Y{_format_float(start_y)}",
+                    f"G00 Z{approach_z}",
+                    f"G01 Z{cut_depth} F{plunge_feed} (Plunge)",
+                    f"G01 X{_format_float(end_x)} Y{_format_float(end_y)} F{cut_feed} (Cut line)",
+                    f"G00 Z{safe_z} (Retract)",
+                ]
+            )
+            entity_count += 1
             continue
 
-        points = [
-            _validated_xy(x * scale_to_mm, y * scale_to_mm)
-            for x, y in entity.get_points("xy")
-        ]
-        if len(points) > 1 and np.allclose(points[-1], points[0], atol=1e-9):
-            points.pop()
-        if len(points) < 2:
-            raise RuntimeError(
-                "Error: DXF LWPOLYLINE must contain at least two distinct vertices."
+        if entity_type == "ARC":
+            center_x, center_y = _validated_xy(
+                entity.dxf.center.x * scale_to_mm,
+                entity.dxf.center.y * scale_to_mm,
             )
+            radius = float(entity.dxf.radius) * scale_to_mm
+            start_angle_rad = math.radians(float(entity.dxf.start_angle))
+            end_angle_rad = math.radians(float(entity.dxf.end_angle))
+            start_x = center_x + radius * math.cos(start_angle_rad)
+            start_y = center_y + radius * math.sin(start_angle_rad)
+            end_x = center_x + radius * math.cos(end_angle_rad)
+            end_y = center_y + radius * math.sin(end_angle_rad)
+            i_val = center_x - start_x
+            j_val = center_y - start_y
+            lines.extend(
+                [
+                    f"G00 X{_format_float(start_x)} Y{_format_float(start_y)}",
+                    f"G00 Z{approach_z}",
+                    f"G01 Z{cut_depth} F{plunge_feed} (Plunge)",
+                    f"G03 X{_format_float(end_x)} Y{_format_float(end_y)} I{_format_float(i_val)} J{_format_float(j_val)} F{cut_feed} (Arc CCW)",
+                    f"G00 Z{safe_z} (Retract)",
+                ]
+            )
+            entity_count += 1
+            continue
 
-        start_x, start_y = points[0]
-        lines.extend(
-            [
-                f"G00 X{_format_float(start_x)} Y{_format_float(start_y)}",
-                f"G00 Z{approach_z}",
-                f"G01 Z{cut_depth} F{plunge_feed} (Plunge)",
+        if entity_type in ("LWPOLYLINE", "POLYLINE"):
+            points = [
+                _validated_xy(x * scale_to_mm, y * scale_to_mm)
+                for x, y in entity.get_points("xy")
             ]
-        )
-        for x_value, y_value in points[1:]:
-            lines.append(
-                f"G01 X{_format_float(x_value)} "
-                f"Y{_format_float(y_value)} F{cut_feed} (Cut)"
+            if len(points) > 1 and np.allclose(points[-1], points[0], atol=1e-9):
+                points.pop()
+            if len(points) < 2:
+                raise RuntimeError(
+                    "Error: DXF LWPOLYLINE must contain at least two distinct vertices."
+                )
+
+            start_x, start_y = points[0]
+            lines.extend(
+                [
+                    f"G00 X{_format_float(start_x)} Y{_format_float(start_y)}",
+                    f"G00 Z{approach_z}",
+                    f"G01 Z{cut_depth} F{plunge_feed} (Plunge)",
+                ]
             )
-        lines.extend(
-            [
-                f"G01 X{_format_float(start_x)} Y{_format_float(start_y)} "
-                f"F{cut_feed} (Close contour)",
-                f"G00 Z{safe_z} (Retract)",
-            ]
-        )
-        entity_count += 1
+            for x_value, y_value in points[1:]:
+                lines.append(
+                    f"G01 X{_format_float(x_value)} "
+                    f"Y{_format_float(y_value)} F{cut_feed} (Cut)"
+                )
+            lines.extend(
+                [
+                    f"G01 X{_format_float(start_x)} Y{_format_float(start_y)} "
+                    f"F{cut_feed} (Close contour)",
+                    f"G00 Z{safe_z} (Retract)",
+                ]
+            )
+            entity_count += 1
+            continue
 
     if entity_count == 0:
         raise RuntimeError(
-            "Error: DXF contains no supported CIRCLE or LWPOLYLINE entities."
+            "Error: DXF contains no supported CIRCLE, LWPOLYLINE, LINE, or ARC entities."
         )
     lines.extend(_fanuc_footer(config))
     return "\n".join(lines) + "\n", entity_count

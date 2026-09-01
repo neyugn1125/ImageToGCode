@@ -56,23 +56,23 @@
         <!-- 1. Files & Upload -->
         <div>
           <div class="flex items-center gap-2 mb-3">
-            <i data-lucide="image" class="w-4 h-4 text-blue-600"></i>
-            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">1. Input Drawing</h2>
+            <i data-lucide="file-code" class="w-4 h-4 text-blue-600"></i>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">1. Input Drawing or DXF</h2>
           </div>
 
           <!-- Drop Zone -->
           <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-lg p-4 text-center cursor-pointer transition bg-slate-50 flex flex-col items-center justify-center relative">
-            <input type="file" id="image-input" accept=".png,.jpg,.jpeg,.bmp,.tif,.tiff" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+            <input type="file" id="image-input" accept=".png,.jpg,.jpeg,.bmp,.tif,.tiff,.dxf" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
             <i data-lucide="upload-cloud" class="w-7 h-7 text-slate-400 mb-2"></i>
             <span class="text-xs font-semibold text-slate-700">Click to upload or drag & drop</span>
-            <span class="text-[11px] text-slate-400 mt-0.5">PNG, JPG, BMP, TIFF</span>
+            <span class="text-[11px] text-slate-400 mt-0.5">PNG, JPG, BMP, TIFF, DXF</span>
             <div id="file-name-display" class="text-xs text-blue-600 font-medium mt-2 truncate max-w-[220px]">No file chosen</div>
           </div>
 
           <!-- Strip Dimensions Checkbox -->
           <label class="flex items-center gap-2 mt-3 text-xs text-slate-700 cursor-pointer select-none">
             <input type="checkbox" id="strip-dimensions" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4" />
-            <span>Remove dimension annotations before tracing</span>
+            <span>Remove dimension annotations (Image mode)</span>
           </label>
         </div>
 

@@ -250,25 +250,40 @@ class ImageToGCodeWebApp {
   async _handleFileSelected(file) {
     this.selectedFile = file;
     this.fileNameDisplay.textContent = file.name;
+    const isDxf = file.name.toLowerCase().endsWith('.dxf');
+
+    // Adapt UI for DXF vs Image
+    this.stripDimensionsCheck.disabled = isDxf;
+    this.refWidthInput.disabled = isDxf;
+    this.refHeightInput.disabled = isDxf;
+    this.pixelsPerMmInput.disabled = isDxf;
 
     try {
-      await this.previewViewer.loadImage(file);
-      this.previewInfo.textContent = `${this.previewViewer.imgW} x ${this.previewViewer.imgH} px | ${file.name}`;
+      if (isDxf) {
+        this.previewViewer.loadDxf(file);
+        this.previewInfo.textContent = `DXF CAD File | ${file.name}`;
+      } else {
+        await this.previewViewer.loadImage(file);
+        this.previewInfo.textContent = `${this.previewViewer.imgW} x ${this.previewViewer.imgH} px | ${file.name}`;
+      }
       await this._analyzeSelectedImage();
     } catch (err) {
-      this._showStatus(`Error loading image: ${err.message}`, 'error');
+      this._showStatus(`Error loading file: ${err.message}`, 'error');
     }
   }
 
   async _analyzeSelectedImage() {
     if (!this.selectedFile) return;
 
+    const isDxf = this.selectedFile.name.toLowerCase().endsWith('.dxf');
     const formData = new FormData();
     formData.append('image', this.selectedFile);
     formData.append('strip_dimensions', this.stripDimensionsCheck.checked);
-    if (this.refWidthInput.value.trim()) formData.append('reference_width_mm', this.refWidthInput.value.trim());
-    if (this.refHeightInput.value.trim()) formData.append('reference_height_mm', this.refHeightInput.value.trim());
-    if (this.pixelsPerMmInput.value.trim()) formData.append('pixels_per_mm', this.pixelsPerMmInput.value.trim());
+    if (!isDxf) {
+      if (this.refWidthInput.value.trim()) formData.append('reference_width_mm', this.refWidthInput.value.trim());
+      if (this.refHeightInput.value.trim()) formData.append('reference_height_mm', this.refHeightInput.value.trim());
+      if (this.pixelsPerMmInput.value.trim()) formData.append('pixels_per_mm', this.pixelsPerMmInput.value.trim());
+    }
 
     try {
       const response = await fetch('/api/analyze', {
@@ -284,12 +299,19 @@ class ImageToGCodeWebApp {
       const analysis = await response.json();
       this.previewViewer.setAnalysis(analysis);
 
-      const parts = [`${analysis.image_width} x ${analysis.image_height} px`, this.selectedFile.name];
-      if (analysis.scale_factor) {
+      const parts = [];
+      if (isDxf) {
+        parts.push(`DXF CAD Envelope: ${analysis.image_width} x ${analysis.image_height} mm`);
+      } else {
+        parts.push(`${analysis.image_width} x ${analysis.image_height} px`);
+      }
+      parts.push(this.selectedFile.name);
+
+      if (!isDxf && analysis.scale_factor) {
         parts.push(`SF=${analysis.scale_factor.toFixed(2)} px/mm`);
       }
       if (analysis.contour_count > 0) {
-        parts.push(`${analysis.contour_count} contour(s)`);
+        parts.push(`${analysis.contour_count} entity/contour(s)`);
       }
       this.previewInfo.textContent = parts.join('  |  ');
     } catch (err) {

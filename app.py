@@ -27,8 +27,7 @@ from core.config import (
     MachiningConfig,
     validate_config,
 )
-from core.pipeline import convert_image_to_gcode
-from core.post import (
+from core.pipeline import convert_image_to_gcode, dxf_to_gcode
     Frame,
     Point,
     Segment,
@@ -655,26 +654,21 @@ class ImageToGCodeApp(ttk.Frame):
         return button
 
     def _choose_input(self) -> None:
-        selected = filedialog.askopenfilename(
-            title="Select drawing image",
-            filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp *.tif *.tiff")],
-        )
-        if not selected:
-            return
+        allowed = {*IMAGE_EXTENSIONS, DXF_EXTENSION}
+            title="Select drawing image or DXF file",
+            filetypes=[
+                ("Supported files", "*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.dxf"),
         path = Path(selected)
-        if path.suffix.lower() not in ALLOWED_IMAGE_EXTENSIONS:
+        if path.suffix.lower() not in allowed:
             self._show_error(
                 f"Unsupported file type: {path.suffix or '(no extension)'}. "
-                f"Allowed: {', '.join(sorted(ALLOWED_IMAGE_EXTENSIONS))}"
-            )
+                f"Allowed: {', '.join(sorted(allowed))}"
             return
-        if cv2.imread(str(path)) is None:
+        if path.suffix.lower() != ".dxf" and cv2.imread(str(path)) is None:
             self._show_error(f"Not a valid image file: {path.name}")
-            return
         self.input_var.set(str(path))
         self._load_preview(path)
 
-    def _choose_output(self) -> None:
         selected = filedialog.asksaveasfilename(
             title="Save G-code as",
             defaultextension=".nc",
@@ -736,24 +730,22 @@ class ImageToGCodeApp(ttk.Frame):
         self._current_preview_path = image_path
         self.preview_canvas.delete("all")
         canvas_width, canvas_height = self._canvas_size(self.preview_canvas)
-        image = cv2.imread(str(image_path)) if image_path.is_file() else None
-        if image is None:
+
+        if image_path.suffix.lower() == ".dxf":
             self.preview_photo = None
             self._current_analysis = None
             self._preview_img_w = self._preview_img_h = 0
-            self.preview_info_var.set("Select a PNG/JPG/BMP image to preview")
+            self.preview_info_var.set(f"DXF CAD File | {image_path.name}")
             self.preview_canvas.create_text(
                 canvas_width // 2,
                 canvas_height // 2,
-                text="No image preview available",
+                text="No image or DXF preview available",
                 fill=MUTED_COLOR,
                 font=("Segoe UI", 11),
-            )
             return
 
         orig_h, orig_w = image.shape[:2]
         self._preview_img_w = orig_w
-        self._preview_img_h = orig_h
 
         # Run analysis to extract calibration, envelope, and G54 origin
         try:
@@ -1458,32 +1450,23 @@ class ImageToGCodeApp(ttk.Frame):
             os.close(fd)
             temporary_path = Path(temporary_name)
             reference_width, reference_height, pixels_per_mm = scale_reference
-            scale_factor, contour_count = convert_image_to_gcode(
-                input_path,
-                temporary_path,
-                config,
-                strip_dimensions=strip_dimensions,
-                reference_width_mm=reference_width,
-                reference_height_mm=reference_height,
-                pixels_per_mm=pixels_per_mm,
-            )
+            if input_path.suffix.lower() == ".dxf":
+                contour_count = dxf_to_gcode(input_path, temporary_path, config)
+                scale_factor = 1.0
+            else:
+                scale_factor, contour_count = convert_image_to_gcode(
+                    input_path,
+                    temporary_path,
+                    config,
+                    strip_dimensions=strip_dimensions,
+                    reference_width_mm=reference_width,
+                    reference_height_mm=reference_height,
+                    pixels_per_mm=pixels_per_mm,
+                )
             os.replace(temporary_path, output_path)
             temporary_path = None
         except Exception as error:
             self.result_queue.put(("error", error))
-        else:
-            self.result_queue.put(("success", (scale_factor, contour_count, output_path)))
-        finally:
-            if temporary_path is not None:
-                try:
-                    temporary_path.unlink()
-                except FileNotFoundError:
-                    pass
-
-    def _poll_results(self) -> None:
-        try:
-            result_type, payload = self.result_queue.get_nowait()
-        except queue.Empty:
             self.root.after(100, self._poll_results)
             return
 

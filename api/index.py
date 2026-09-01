@@ -21,8 +21,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import cv2
+import ezdxf
 from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -34,15 +36,14 @@ from api.schemas import (
     ToolpathSegmentModel,
 )
 from core.config import MachiningConfig, validate_config
-from core.dxf import image_to_dxf
-from core.pipeline import convert_image_to_gcode
+from core.dxf.exporter import image_to_dxf
+from core.dxf.reader import _dxf_unit_scale_to_mm
+from core.pipeline import convert_image_to_gcode, dxf_to_gcode
 from core.post import build_sim_timeline, parse_toolpath_segments
 from core.vision import analyze_image
 
 
-from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
-
-ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".dxf"}
 
 app = FastAPI(
     title="Image to G-Code API",
@@ -89,8 +90,6 @@ async def normalize_vercel_paths(request: Request, call_next):
     return await call_next(request)
 
 
-
-
 def _validate_image_file(file: UploadFile) -> str:
     """Validate uploaded file extension and return clean suffix."""
     filename = file.filename or "input.png"
@@ -99,7 +98,7 @@ def _validate_image_file(file: UploadFile) -> str:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"Unsupported image type: '{suffix or '(no extension)'}'. "
+                f"Unsupported file type: '{suffix or '(no extension)'}'. "
                 f"Allowed formats: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
             ),
         )
@@ -107,28 +106,40 @@ def _validate_image_file(file: UploadFile) -> str:
 
 
 def _save_upload_to_temp(file_bytes: bytes, suffix: str) -> Path:
-    """Save raw upload bytes to a temporary file and verify it can be read by OpenCV."""
+    """Save raw upload bytes to a temporary file and verify file integrity."""
     if not file_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The uploaded image file is empty.",
+            detail="The uploaded file is empty.",
         )
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(file_bytes)
         tmp_path = Path(tmp.name)
 
-    # Verify image integrity
-    img = cv2.imread(str(tmp_path))
-    if img is None:
+    if suffix == ".dxf":
         try:
-            tmp_path.unlink()
-        except OSError:
-            pass
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Uploaded file is not a valid image or is corrupted.",
-        )
+            ezdxf.readfile(str(tmp_path))
+        except Exception as error:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Uploaded file is not a valid DXF CAD document: {error}",
+            ) from error
+    else:
+        img = cv2.imread(str(tmp_path))
+        if img is None:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded file is not a valid image or is corrupted.",
+            )
 
     return tmp_path
 
@@ -145,18 +156,68 @@ def health_check() -> HealthResponse:
 
 @api_router.post("/analyze", response_model=ImageAnalysisResponse, tags=["Vision"])
 async def analyze_uploaded_image(
-    image: UploadFile = File(..., description="Source CAD/drawing image"),
+    image: UploadFile = File(..., description="Source CAD/drawing image or DXF"),
     strip_dimensions: bool = Form(default=False, description="Filter dimension lines/text"),
     reference_width_mm: Optional[float] = Form(default=None, description="Known width in mm"),
     reference_height_mm: Optional[float] = Form(default=None, description="Known height in mm"),
     pixels_per_mm: Optional[float] = Form(default=None, description="Explicit scale (px/mm)"),
 ) -> ImageAnalysisResponse:
-    """Inspect and calibrate uploaded drawing image without generating G-code."""
+    """Inspect and calibrate uploaded drawing image or direct DXF file."""
     suffix = _validate_image_file(image)
     file_bytes = await image.read()
     temp_img_path = _save_upload_to_temp(file_bytes, suffix)
 
     try:
+        if suffix == ".dxf":
+            doc = ezdxf.readfile(str(temp_img_path))
+            scale_to_mm = _dxf_unit_scale_to_mm(doc)
+            xs: list[float] = []
+            ys: list[float] = []
+            entity_count = 0
+            for entity in doc.modelspace():
+                etype = entity.dxftype()
+                if etype == "CIRCLE":
+                    cx = float(entity.dxf.center.x) * scale_to_mm
+                    cy = float(entity.dxf.center.y) * scale_to_mm
+                    r = float(entity.dxf.radius) * scale_to_mm
+                    xs.extend([cx - r, cx + r])
+                    ys.extend([cy - r, cy + r])
+                    entity_count += 1
+                elif etype in ("LWPOLYLINE", "POLYLINE"):
+                    for x, y in entity.get_points("xy"):
+                        xs.append(float(x) * scale_to_mm)
+                        ys.append(float(y) * scale_to_mm)
+                    entity_count += 1
+                elif etype == "LINE":
+                    xs.extend([float(entity.dxf.start.x) * scale_to_mm, float(entity.dxf.end.x) * scale_to_mm])
+                    ys.extend([float(entity.dxf.start.y) * scale_to_mm, float(entity.dxf.end.y) * scale_to_mm])
+                    entity_count += 1
+                elif etype == "ARC":
+                    cx = float(entity.dxf.center.x) * scale_to_mm
+                    cy = float(entity.dxf.center.y) * scale_to_mm
+                    r = float(entity.dxf.radius) * scale_to_mm
+                    xs.extend([cx - r, cx + r])
+                    ys.extend([cy - r, cy + r])
+                    entity_count += 1
+
+            min_x = min(xs, default=0.0)
+            max_x = max(xs, default=0.0)
+            min_y = min(ys, default=0.0)
+            max_y = max(ys, default=0.0)
+            w_mm = max(1.0, max_x - min_x)
+            h_mm = max(1.0, max_y - min_y)
+
+            return ImageAnalysisResponse(
+                image_width=int(round(w_mm)),
+                image_height=int(round(h_mm)),
+                scale_factor=1.0,
+                calibration_bbox_px=None,
+                machining_bbox_px=[int(min_x), int(min_y), int(max_x), int(max_y)],
+                g54_origin_px=[0.0, 0.0],
+                contour_count=entity_count,
+            )
+
+        # Standard raster image analysis
         analysis = analyze_image(
             temp_img_path,
             strip_dimensions=strip_dimensions,
@@ -186,7 +247,7 @@ async def analyze_uploaded_image(
 
 @api_router.post("/convert", response_model=ConversionResponse, tags=["CAM & Post-Processor"])
 async def convert_image(
-    image: UploadFile = File(..., description="Source CAD/drawing image"),
+    image: UploadFile = File(..., description="Source CAD/drawing image or DXF"),
     cut_depth: float = Form(default=-5.0, description="Target cut depth Z (mm)"),
     plunge_feed: float = Form(default=100.0, description="Plunge feed rate (mm/min)"),
     cut_feed: float = Form(default=300.0, description="Cutting feed rate (mm/min)"),
@@ -202,7 +263,7 @@ async def convert_image(
     reference_height_mm: Optional[float] = Form(default=None, description="Known height in mm"),
     pixels_per_mm: Optional[float] = Form(default=None, description="Scale factor px/mm"),
 ) -> ConversionResponse:
-    """Execute full pipeline: vision analysis -> CAM sequencing -> Fanuc G-code + DXF."""
+    """Execute full pipeline: image/DXF -> CAM sequencing -> Fanuc G-code + DXF."""
     suffix = _validate_image_file(image)
     file_bytes = await image.read()
     temp_img_path = _save_upload_to_temp(file_bytes, suffix)
@@ -232,7 +293,65 @@ async def convert_image(
     temp_dxf_path: Optional[Path] = None
 
     try:
-        # 1. Run vision analysis
+        filename_base = Path(image.filename or "drawing").stem
+
+        if suffix == ".dxf":
+            with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp_nc:
+                temp_nc_path = Path(tmp_nc.name)
+
+            converted_count = dxf_to_gcode(temp_img_path, temp_nc_path, config)
+            gcode_content = temp_nc_path.read_text(encoding="ascii")
+            dxf_bytes = temp_img_path.read_bytes()
+            dxf_base64 = base64.b64encode(dxf_bytes).decode("ascii")
+
+            segments = parse_toolpath_segments(gcode_content)
+            _frames, total_time, cut_dist, rapid_dist = build_sim_timeline(segments)
+
+            all_points = [point for segment in segments for point in segment.points]
+            min_x = min((pt[0] for pt in all_points), default=0.0)
+            max_x = max((pt[0] for pt in all_points), default=0.0)
+            min_y = min((pt[1] for pt in all_points), default=0.0)
+            max_y = max((pt[1] for pt in all_points), default=0.0)
+
+            segment_models = [
+                ToolpathSegmentModel(
+                    kind=seg.kind,
+                    points=[[float(pt[0]), float(pt[1])] for pt in seg.points],
+                    feed=float(seg.feed),
+                    z_depth=float(seg.z_depth),
+                )
+                for seg in segments
+            ]
+
+            return ConversionResponse(
+                success=True,
+                analysis=ImageAnalysisResponse(
+                    image_width=int(round(max_x - min_x)),
+                    image_height=int(round(max_y - min_y)),
+                    scale_factor=1.0,
+                    calibration_bbox_px=None,
+                    machining_bbox_px=[int(min_x), int(min_y), int(max_x), int(max_y)],
+                    g54_origin_px=[0.0, 0.0],
+                    contour_count=converted_count,
+                ),
+                segments=segment_models,
+                timeline=SimulationTimelineModel(
+                    total_time_s=round(total_time, 2),
+                    cut_distance_mm=round(cut_dist, 2),
+                    rapid_distance_mm=round(rapid_dist, 2),
+                    envelope_width_mm=round(max_x - min_x, 2),
+                    envelope_height_mm=round(max_y - min_y, 2),
+                    min_x_mm=round(min_x, 2),
+                    max_x_mm=round(max_x, 2),
+                    min_y_mm=round(min_y, 2),
+                    max_y_mm=round(max_y, 2),
+                ),
+                gcode=gcode_content,
+                dxf_base64=dxf_base64,
+                filename_base=filename_base,
+            )
+
+        # 1. Run vision analysis on raster image
         analysis = analyze_image(
             temp_img_path,
             strip_dimensions=strip_dimensions,
@@ -291,8 +410,6 @@ async def convert_image(
             )
             for seg in segments
         ]
-
-        filename_base = Path(image.filename or "drawing").stem
 
         h, w = analysis.image_shape
         return ConversionResponse(
@@ -381,4 +498,3 @@ def custom_redoc_docs(request: Request):
 PUBLIC_DIR = PROJECT_ROOT / "public"
 if PUBLIC_DIR.is_dir():
     app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="static")
-

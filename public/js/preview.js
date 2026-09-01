@@ -1,5 +1,5 @@
 /**
- * Image Preview & Vision Analysis Inspector
+ * Image & DXF CAD Preview Inspector
  */
 
 export class ImagePreviewViewer {
@@ -9,6 +9,8 @@ export class ImagePreviewViewer {
     this.onCoordUpdate = onCoordUpdate;
 
     this.image = null;
+    this.isDxf = false;
+    this.dxfFilename = '';
     this.analysis = null;
     this.showTags = true;
 
@@ -51,6 +53,7 @@ export class ImagePreviewViewer {
   }
 
   loadImage(fileOrBlob) {
+    this.isDxf = false;
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(fileOrBlob);
       const img = new Image();
@@ -66,8 +69,21 @@ export class ImagePreviewViewer {
     });
   }
 
+  loadDxf(file) {
+    this.isDxf = true;
+    this.image = null;
+    this.dxfFilename = file.name;
+    this.imgW = 100;
+    this.imgH = 100;
+    this.render();
+  }
+
   setAnalysis(analysisData) {
     this.analysis = analysisData;
+    if (this.isDxf && analysisData) {
+      this.imgW = Math.max(10, analysisData.image_width || 100);
+      this.imgH = Math.max(10, analysisData.image_height || 100);
+    }
     this.render();
   }
 
@@ -77,7 +93,7 @@ export class ImagePreviewViewer {
   }
 
   _onMouseMove(event) {
-    if (!this.image || this.imgW <= 0 || this.imgH <= 0) return;
+    if ((!this.image && !this.isDxf) || this.imgW <= 0 || this.imgH <= 0) return;
 
     const rect = this.canvas.getBoundingClientRect();
     const mouseX = event.clientX - rect.left;
@@ -88,7 +104,9 @@ export class ImagePreviewViewer {
 
     if (imgX >= 0 && imgX <= this.imgW && imgY >= 0 && imgY <= this.imgH) {
       let mmInfo = null;
-      if (this.analysis && this.analysis.scale_factor && this.analysis.g54_origin_px) {
+      if (this.isDxf) {
+        mmInfo = { mmX: imgX, mmY: this.imgH - imgY };
+      } else if (this.analysis && this.analysis.scale_factor && this.analysis.g54_origin_px) {
         const [xMin, yMax] = this.analysis.g54_origin_px;
         const sf = this.analysis.scale_factor;
         const mmX = (imgX - xMin) / sf;
@@ -115,16 +133,16 @@ export class ImagePreviewViewer {
 
     ctx.clearRect(0, 0, w, h);
 
-    if (!this.image) {
+    if (!this.image && !this.isDxf) {
       ctx.fillStyle = '#94a3b8';
       ctx.font = '14px Inter, Segoe UI, system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Select or drop a drawing image to inspect', w / 2, h / 2);
+      ctx.fillText('Select or drop a drawing image or DXF file to inspect', w / 2, h / 2);
       return;
     }
 
-    const margin = 12;
+    const margin = 16;
     const scale = Math.min(
       (w - 2 * margin) / Math.max(this.imgW, 1),
       (h - 2 * margin) / Math.max(this.imgH, 1),
@@ -137,8 +155,26 @@ export class ImagePreviewViewer {
     this.offsetX = (w - dispW) / 2.0;
     this.offsetY = (h - dispH) / 2.0;
 
-    // Draw base image
-    ctx.drawImage(this.image, this.offsetX, this.offsetY, dispW, dispH);
+    if (this.isDxf) {
+      // Draw DXF CAD background box
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(this.offsetX, this.offsetY, dispW, dispH);
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(this.offsetX, this.offsetY, dispW, dispH);
+
+      // DXF CAD Badge
+      ctx.fillStyle = '#2563eb';
+      ctx.fillRect(this.offsetX, this.offsetY, Math.min(dispW, 180), 20);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px Inter, Segoe UI, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('DXF CAD Vector Mode (1:1 mm)', this.offsetX + 6, this.offsetY + 10);
+    } else {
+      // Draw base raster image
+      ctx.drawImage(this.image, this.offsetX, this.offsetY, dispW, dispH);
+    }
 
     // Draw visual detection tags
     if (this.showTags && this.analysis) {
@@ -225,4 +261,3 @@ export class ImagePreviewViewer {
     }
   }
 }
-
