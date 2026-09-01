@@ -40,14 +40,17 @@ from core.post import build_sim_timeline, parse_toolpath_segments
 from core.vision import analyze_image
 
 
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 
 app = FastAPI(
     title="Image to G-Code API",
     description="Serverless API for 2D CNC contour milling and CAD/CAM simulation",
     version="1.0.0",
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # Enable CORS for all origins (supports local development and Vercel deployments)
@@ -319,7 +322,44 @@ app.include_router(api_router, prefix="/api")
 app.include_router(api_router, prefix="", include_in_schema=False)
 app.include_router(api_router, prefix="/api/index.py", include_in_schema=False)
 
+
+@app.get("/api/openapi.json", include_in_schema=False)
+@app.get("/openapi.json", include_in_schema=False)
+@app.get("/api/index.py/openapi.json", include_in_schema=False)
+def custom_openapi_json():
+    """Return raw OpenAPI schema JSON."""
+    return JSONResponse(app.openapi())
+
+
+@app.get("/api/docs", include_in_schema=False)
+@app.get("/docs", include_in_schema=False)
+@app.get("/api/index.py/docs", include_in_schema=False)
+def custom_swagger_docs(request: Request):
+    """Serve interactive Swagger UI documentation."""
+    openapi_url = "/api/openapi.json" if request.url.path.startswith("/api") else "/openapi.json"
+    return get_swagger_ui_html(
+        openapi_url=openapi_url,
+        title="Image to G-Code API - Documentation",
+        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
+    )
+
+
+@app.get("/api/redoc", include_in_schema=False)
+@app.get("/redoc", include_in_schema=False)
+@app.get("/api/index.py/redoc", include_in_schema=False)
+def custom_redoc_docs(request: Request):
+    """Serve ReDoc API documentation."""
+    openapi_url = "/api/openapi.json" if request.url.path.startswith("/api") else "/openapi.json"
+    return get_redoc_html(
+        openapi_url=openapi_url,
+        title="Image to G-Code API - ReDoc",
+        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js",
+    )
+
+
 # Mount static files from public/ to serve frontend on / when running locally or on server
 PUBLIC_DIR = PROJECT_ROOT / "public"
 if PUBLIC_DIR.is_dir():
     app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="static")
+
