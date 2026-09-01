@@ -1,0 +1,62 @@
+/* Custom CAD/CAM UI Styles */
+
+:root {
+  --accent-color: #0066cc;
+  --accent-hover: #0052a3;
+  --bg-main: #f8fafc;
+  --panel-bg: #ffffff;
+  --border-color: #e2e8f0;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+}
+
+/* Smooth thin scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Canvas styling */
+.cad-canvas {
+  touch-action: none;
+  user-select: none;
+  cursor: crosshair;
+  background-color: #ffffff;
+}
+
+.cad-canvas.panning {
+  cursor: grab;
+}
+
+.cad-canvas.panning:active {
+  cursor: grabbing;
+}
+
+/* Custom range slider */
+input[type="range"] {
+  accent-color: var(--accent-color);
+}
+
+/* Pulse animation for converting state */
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
