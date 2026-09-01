@@ -24,10 +24,13 @@ import cv2
 from core.config import (
     DEFAULT_INPUT_PATH,
     DEFAULT_OUTPUT_PATH,
+    DXF_EXTENSION,
+    IMAGE_EXTENSIONS,
     MachiningConfig,
     validate_config,
 )
 from core.pipeline import convert_image_to_gcode, dxf_to_gcode
+from core.post import (
     Frame,
     Point,
     Segment,
@@ -655,20 +658,31 @@ class ImageToGCodeApp(ttk.Frame):
 
     def _choose_input(self) -> None:
         allowed = {*IMAGE_EXTENSIONS, DXF_EXTENSION}
+        selected = filedialog.askopenfilename(
             title="Select drawing image or DXF file",
             filetypes=[
                 ("Supported files", "*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.dxf"),
+                ("Image files", "*.png *.jpg *.jpeg *.bmp *.tif *.tiff"),
+                ("DXF CAD files", "*.dxf"),
+                ("All files", "*.*"),
+            ],
+        )
+        if not selected:
+            return
         path = Path(selected)
         if path.suffix.lower() not in allowed:
             self._show_error(
                 f"Unsupported file type: {path.suffix or '(no extension)'}. "
                 f"Allowed: {', '.join(sorted(allowed))}"
+            )
             return
         if path.suffix.lower() != ".dxf" and cv2.imread(str(path)) is None:
             self._show_error(f"Not a valid image file: {path.name}")
+            return
         self.input_var.set(str(path))
         self._load_preview(path)
 
+    def _choose_output(self) -> None:
         selected = filedialog.asksaveasfilename(
             title="Save G-code as",
             defaultextension=".nc",
@@ -736,16 +750,44 @@ class ImageToGCodeApp(ttk.Frame):
             self._current_analysis = None
             self._preview_img_w = self._preview_img_h = 0
             self.preview_info_var.set(f"DXF CAD File | {image_path.name}")
+            self.preview_canvas.create_rectangle(
+                20, 20, canvas_width - 20, canvas_height - 20,
+                fill="#f0f4f8", outline="#cbd5e1", width=1
+            )
+            self.preview_canvas.create_text(
+                canvas_width // 2,
+                canvas_height // 2 - 10,
+                text=f"DXF CAD File: {image_path.name}",
+                fill="#0067c0",
+                font=("Segoe UI", 11, "bold"),
+            )
+            self.preview_canvas.create_text(
+                canvas_width // 2,
+                canvas_height // 2 + 14,
+                text="Direct 1:1 Metric CAM Mode (Click 'Generate G-Code' to simulate)",
+                fill=MUTED_COLOR,
+                font=("Segoe UI", 9),
+            )
+            return
+
+        image = cv2.imread(str(image_path)) if image_path.is_file() else None
+        if image is None:
+            self.preview_photo = None
+            self._current_analysis = None
+            self._preview_img_w = self._preview_img_h = 0
+            self.preview_info_var.set("Select a PNG/JPG/BMP image or DXF file to preview")
             self.preview_canvas.create_text(
                 canvas_width // 2,
                 canvas_height // 2,
                 text="No image or DXF preview available",
                 fill=MUTED_COLOR,
                 font=("Segoe UI", 11),
+            )
             return
 
         orig_h, orig_w = image.shape[:2]
         self._preview_img_w = orig_w
+        self._preview_img_h = orig_h
 
         # Run analysis to extract calibration, envelope, and G54 origin
         try:
@@ -1467,6 +1509,19 @@ class ImageToGCodeApp(ttk.Frame):
             temporary_path = None
         except Exception as error:
             self.result_queue.put(("error", error))
+        else:
+            self.result_queue.put(("success", (scale_factor, contour_count, output_path)))
+        finally:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink()
+                except FileNotFoundError:
+                    pass
+
+    def _poll_results(self) -> None:
+        try:
+            result_type, payload = self.result_queue.get_nowait()
+        except queue.Empty:
             self.root.after(100, self._poll_results)
             return
 
