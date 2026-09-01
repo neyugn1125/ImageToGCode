@@ -1,0 +1,61 @@
+"""Pydantic schemas for ImageToGCode API."""
+
+from __future__ import annotations
+
+from typing import List, Optional
+from pydantic import BaseModel, Field
+
+
+class HealthResponse(BaseModel):
+    """Healthcheck response model."""
+
+    status: str = Field(default="ok", description="Server health status")
+    version: str = Field(default="1.0.0", description="API version")
+    service: str = Field(default="ImageToGCode CNC API", description="Service name")
+
+
+class ImageAnalysisResponse(BaseModel):
+    """Analysis results for source image."""
+
+    image_width: int
+    image_height: int
+    scale_factor: Optional[float] = None
+    calibration_bbox_px: Optional[List[int]] = None  # [x, y, w, h]
+    machining_bbox_px: Optional[List[int]] = None    # [x1, y1, x2, y2]
+    g54_origin_px: Optional[List[float]] = None      # [x, y]
+    contour_count: int = 0
+
+
+class ToolpathSegmentModel(BaseModel):
+    """Single CAD/CAM toolpath move segment for 2D visualizer."""
+
+    kind: str = Field(description="Movement type: 'rapid', 'linear', 'arc_cw', 'arc_ccw'")
+    points: List[List[float]] = Field(description="List of [x, y] coordinates in mm")
+    feed: float = Field(description="Feed rate in mm/min")
+    z_depth: float = Field(default=0.0, description="Target Z depth in mm")
+
+
+class SimulationTimelineModel(BaseModel):
+    """Machining simulation summary metrics."""
+
+    total_time_s: float
+    cut_distance_mm: float
+    rapid_distance_mm: float
+    envelope_width_mm: float
+    envelope_height_mm: float
+    min_x_mm: float
+    max_x_mm: float
+    min_y_mm: float
+    max_y_mm: float
+
+
+class ConversionResponse(BaseModel):
+    """Full pipeline result containing analysis, toolpath simulation, G-code, and DXF."""
+
+    success: bool = True
+    analysis: ImageAnalysisResponse
+    segments: List[ToolpathSegmentModel]
+    timeline: SimulationTimelineModel
+    gcode: str = Field(description="Raw Fanuc profile milling G-code")
+    dxf_base64: Optional[str] = Field(default=None, description="Base64-encoded DXF CAD drawing")
+    filename_base: str = Field(default="drawing", description="Recommended base filename")

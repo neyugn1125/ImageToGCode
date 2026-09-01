@@ -1,0 +1,140 @@
+"""Unit and integration tests for the ImageToGCode FastAPI Serverless Backend."""
+
+from __future__ import annotations
+
+import base64
+import unittest
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from api.index import app
+
+
+SAMPLE_DIR = Path(__file__).resolve().parent.parent / "input" / "samples"
+SAMPLE_PLATE = SAMPLE_DIR / "01_plate_bosses.png"
+
+
+class TestApiEndpoints(unittest.TestCase):
+    """Test suite for FastAPI endpoints."""
+
+    def setUp(self) -> None:
+        self.client = TestClient(app)
+
+    def test_health_endpoint(self) -> None:
+        response = self.client.get("/api/health")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "ok")
+        self.assertIn("version", data)
+        self.assertIn("service", data)
+
+    def test_analyze_sample_image(self) -> None:
+        self.assertTrue(SAMPLE_PLATE.is_file(), f"Sample image not found: {SAMPLE_PLATE}")
+        with open(SAMPLE_PLATE, "rb") as f:
+            response = self.client.post(
+                "/api/analyze",
+                files={"image": ("01_plate_bosses.png", f, "image/png")},
+                data={"strip_dimensions": "false"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertGreater(data["image_width"], 0)
+        self.assertGreater(data["image_height"], 0)
+        self.assertIsNotNone(data["scale_factor"])
+        self.assertGreater(data["scale_factor"], 0)
+        self.assertIsNotNone(data["g54_origin_px"])
+        self.assertGreater(data["contour_count"], 0)
+
+    def test_analyze_invalid_extension(self) -> None:
+        response = self.client.post(
+            "/api/analyze",
+            files={"image": ("test.txt", b"not an image", "text/plain")},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Unsupported image type", response.json()["detail"])
+
+    def test_convert_sample_image(self) -> None:
+        self.assertTrue(SAMPLE_PLATE.is_file(), f"Sample image not found: {SAMPLE_PLATE}")
+        with open(SAMPLE_PLATE, "rb") as f:
+            response = self.client.post(
+                "/api/convert",
+                files={"image": ("01_plate_bosses.png", f, "image/png")},
+                data={
+                    "cut_depth": "-4.5",
+                    "plunge_feed": "120.0",
+                    "cut_feed": "350.0",
+                    "spindle_speed": "1800",
+                    "safe_z": "45.0",
+                    "approach_z": "3.0",
+                    "tool_diameter": "4.0",
+                    "tool_number": "2",
+                    "tool_offset": "2",
+                    "program_number": "2000",
+                    "strip_dimensions": "false",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["filename_base"], "01_plate_bosses")
+
+        # G-Code validation
+        gcode = data["gcode"]
+        self.assertIn("O2000", gcode)
+        self.assertIn("M03 S1800", gcode)
+        self.assertIn("T2 M06", gcode)
+        self.assertIn("G43 H2", gcode)
+        self.assertIn("Z45.000", gcode)
+        self.assertIn("G01 Z-4.500 F120.000", gcode)
+        self.assertIn("F350.000", gcode)
+        self.assertIn("M30", gcode)
+
+        # Toolpath Segments validation
+        segments = data["segments"]
+        self.assertGreater(len(segments), 0)
+        first_segment = segments[0]
+        self.assertIn("kind", first_segment)
+        self.assertIn("points", first_segment)
+        self.assertIn("feed", first_segment)
+        self.assertIn("z_depth", first_segment)
+
+        # Timeline validation
+        timeline = data["timeline"]
+        self.assertGreater(timeline["total_time_s"], 0)
+        self.assertGreater(timeline["cut_distance_mm"], 0)
+        self.assertGreater(timeline["envelope_width_mm"], 0)
+        self.assertGreater(timeline["envelope_height_mm"], 0)
+
+        # DXF validation
+        dxf_b64 = data["dxf_base64"]
+        self.assertIsNotNone(dxf_b64)
+        dxf_raw = base64.b64decode(dxf_b64).decode("latin-1", errors="ignore")
+        self.assertIn("SECTION", dxf_raw)
+        self.assertIn("ENTITIES", dxf_raw)
+
+    def test_convert_invalid_config(self) -> None:
+        with open(SAMPLE_PLATE, "rb") as f:
+            response = self.client.post(
+                "/api/convert",
+                files={"image": ("01_plate_bosses.png", f, "image/png")},
+                data={
+                    "safe_z": "1.0",
+                    "approach_z": "5.0",  # Invalid: safe_z <= approach_z
+                },
+            )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("safe_z", response.json()["detail"].lower())
+
+    def test_convert_empty_image(self) -> None:
+        response = self.client.post(
+            "/api/convert",
+            files={"image": ("empty.png", b"", "image/png")},
+        )
+        self.assertEqual(response.status_code, 400)
+
+
+if __name__ == "__main__":
+    unittest.main()

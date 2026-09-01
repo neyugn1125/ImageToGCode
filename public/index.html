@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image to G-Code | Fanuc CNC Web Converter & Simulator</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    .font-mono-cad {
+      font-family: 'JetBrains Mono', 'Consolas', monospace;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col">
+
+  <!-- Top Header Navigation -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-[1680px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-sm font-bold text-lg tracking-wider">
+          NC
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-slate-900 leading-tight">Image to G-Code <span class="text-blue-600 font-semibold">| Fanuc CNC</span></h1>
+          <p class="text-xs text-slate-500 hidden sm:block">Automatic 2D calibration, contour hierarchy sequencing, and standalone CAM simulation</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="/api/docs" target="_blank" class="text-xs text-slate-600 hover:text-blue-600 px-3 py-1.5 rounded-md border border-slate-200 hover:border-blue-300 font-medium flex items-center gap-1.5 transition">
+          <i data-lucide="file-code" class="w-3.5 h-3.5"></i>
+          <span>API Docs</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-[1680px] w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- LEFT COLUMN: CONTROLS & PARAMETERS SIDEBAR (4 Cols) -->
+    <aside class="lg:col-span-4 xl:col-span-3 flex flex-col gap-4">
+      
+      <!-- Scrollable Parameter Cards Area -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex-1 flex flex-col gap-5 overflow-y-auto max-h-[calc(100vh-170px)] pr-2">
+        
+        <!-- 1. Files & Upload -->
+        <div>
+          <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="image" class="w-4 h-4 text-blue-600"></i>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">1. Input Drawing</h2>
+          </div>
+
+          <!-- Drop Zone -->
+          <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-lg p-4 text-center cursor-pointer transition bg-slate-50 flex flex-col items-center justify-center relative">
+            <input type="file" id="image-input" accept=".png,.jpg,.jpeg,.bmp,.tif,.tiff" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+            <i data-lucide="upload-cloud" class="w-7 h-7 text-slate-400 mb-2"></i>
+            <span class="text-xs font-semibold text-slate-700">Click to upload or drag & drop</span>
+            <span class="text-[11px] text-slate-400 mt-0.5">PNG, JPG, BMP, TIFF</span>
+            <div id="file-name-display" class="text-xs text-blue-600 font-medium mt-2 truncate max-w-[220px]">No file chosen</div>
+          </div>
+
+          <!-- Strip Dimensions Checkbox -->
+          <label class="flex items-center gap-2 mt-3 text-xs text-slate-700 cursor-pointer select-none">
+            <input type="checkbox" id="strip-dimensions" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4" />
+            <span>Remove dimension annotations before tracing</span>
+          </label>
+        </div>
+
+        <hr class="border-slate-100" />
+
+        <!-- 2. Scale Reference -->
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            <i data-lucide="ruler" class="w-4 h-4 text-blue-600"></i>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">2. Scale Reference (Optional)</h2>
+          </div>
+          <p class="text-[11px] text-slate-500 mb-3">For drawings without embedded 10x10mm calibration square.</p>
+
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <label for="ref-width" class="text-xs text-slate-600">Reference width (mm)</label>
+              <input type="number" step="any" id="ref-width" placeholder="e.g. 100" class="w-24 text-right text-xs px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="ref-height" class="text-xs text-slate-600">Reference height (mm)</label>
+              <input type="number" step="any" id="ref-height" placeholder="e.g. 80" class="w-24 text-right text-xs px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="pixels-per-mm" class="text-xs text-slate-600">Pixels per mm (px/mm)</label>
+              <input type="number" step="any" id="pixels-per-mm" placeholder="e.g. 5.0" class="w-24 text-right text-xs px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+        </div>
+
+        <hr class="border-slate-100" />
+
+        <!-- 3. Machining & Tool Config -->
+        <div>
+          <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="settings-2" class="w-4 h-4 text-blue-600"></i>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide">3. Machining & Tool</h2>
+          </div>
+
+          <div class="space-y-2 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <label for="cut-depth" class="text-slate-600">Cut depth Z (mm)</label>
+              <input type="number" step="any" id="cut-depth" value="-5.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="plunge-feed" class="text-slate-600">Plunge feed (mm/min)</label>
+              <input type="number" step="any" id="plunge-feed" value="100.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="cut-feed" class="text-slate-600">Cut feed (mm/min)</label>
+              <input type="number" step="any" id="cut-feed" value="300.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="spindle-rpm" class="text-slate-600">Spindle RPM</label>
+              <input type="number" id="spindle-rpm" value="1500" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="safe-z" class="text-slate-600">Safe Z (mm)</label>
+              <input type="number" step="any" id="safe-z" value="50.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="approach-z" class="text-slate-600">Approach Z (mm)</label>
+              <input type="number" step="any" id="approach-z" value="2.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="tool-dia" class="text-slate-600 font-semibold text-blue-700">Tool diameter Ø (mm)</label>
+              <input type="number" step="any" id="tool-dia" value="3.0" class="w-24 text-right font-bold text-blue-700 px-2.5 py-1.5 border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="tool-number" class="text-slate-600">Tool number (T)</label>
+              <input type="number" id="tool-number" value="1" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="tool-offset" class="text-slate-600">Tool offset (H)</label>
+              <input type="number" id="tool-offset" value="1" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="program-number" class="text-slate-600">Program number (O)</label>
+              <input type="number" id="program-number" value="1000" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Pinned Action Buttons Row -->
+      <div class="flex flex-col gap-2">
+        <button id="btn-generate" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center gap-2">
+          <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+          <span>Generate G-Code</span>
+        </button>
+        <button id="btn-reset" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs py-2 px-3 rounded-lg border border-slate-200 transition">
+          Reset defaults
+        </button>
+      </div>
+
+    </aside>
+
+    <!-- RIGHT COLUMN: 2 PANELS (PREVIEW & SIMULATION) (8-9 Cols) -->
+    <section class="lg:col-span-8 xl:col-span-9 flex flex-col gap-5 min-w-0">
+
+      <!-- Status Toast/Banner -->
+      <div id="status-banner" class="hidden"></div>
+
+      <!-- 1. IMAGE PREVIEW PANEL -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+            <h3 class="text-sm font-bold text-slate-900">1. Image Preview (Source Drawing & Analysis)</h3>
+          </div>
+          <label class="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+            <input type="checkbox" id="toggle-show-tags" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
+            <span>Show detection tags (10x10mm, G54, Envelope)</span>
+          </label>
+        </div>
+
+        <!-- Preview Canvas -->
+        <div class="w-full h-44 bg-slate-50 rounded-lg border border-slate-200 overflow-hidden relative flex items-center justify-center">
+          <canvas id="preview-canvas" class="w-full h-full"></canvas>
+        </div>
+
+        <!-- Preview Footer -->
+        <div class="flex items-center justify-between text-xs text-slate-500 font-medium pt-1">
+          <div id="preview-info">Select an image to preview</div>
+          <div id="preview-coords" class="font-mono-cad text-slate-700"></div>
+        </div>
+      </div>
+
+      <!-- 2. CAD/CAM TOOLPATH SIMULATION PANEL -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex-1 flex flex-col gap-3 min-h-[480px]">
+        
+        <!-- View Toggles & Title Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+            <h3 class="text-sm font-bold text-slate-900">2. Toolpath Simulation (Clean CAD/CAM View)</h3>
+          </div>
+
+          <!-- Toggles -->
+          <div class="flex items-center gap-4 text-xs text-slate-600">
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="toggle-grid" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
+              <span>Grid & Axes</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="toggle-rapids" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
+              <span>Rapids (G00)</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="toggle-arrows" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
+              <span>Direction Arrows</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="toggle-cutter" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
+              <span>Cutter (Ø)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Simulation Interactive Canvas Container -->
+        <div class="w-full flex-1 min-h-[300px] bg-white rounded-lg border border-slate-200 overflow-hidden relative">
+          <canvas id="sim-canvas" class="cad-canvas w-full h-full"></canvas>
+        </div>
+
+        <!-- Playback Controls Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+          
+          <div class="flex items-center gap-1.5">
+            <button id="btn-sim-play" disabled class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md text-xs font-bold transition shadow-sm">
+              Play
+            </button>
+            <button id="btn-sim-step-back" disabled title="Step Back" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition">
+              |&lt;
+            </button>
+            <button id="btn-sim-step-forward" disabled title="Step Forward" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition">
+              &gt;|
+            </button>
+            <button id="btn-sim-restart" disabled class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition">
+              Restart
+            </button>
+
+            <!-- Speed control -->
+            <div class="flex items-center gap-1.5 ml-3">
+              <span class="text-[11px] text-slate-500 font-medium">Speed:</span>
+              <input type="range" id="sim-speed-slider" min="1" max="50" value="5" class="w-20 cursor-pointer" />
+              <span id="sim-speed-label" class="text-xs font-bold text-slate-700 w-7">5x</span>
+            </div>
+          </div>
+
+          <div>
+            <button id="btn-sim-recenter" class="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition flex items-center gap-1.5">
+              <i data-lucide="maximize" class="w-3.5 h-3.5"></i>
+              <span>Recenter</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Scrubber Range Slider -->
+        <div>
+          <input type="range" id="sim-scrubber" min="0" max="100" value="0" step="0.1" disabled class="w-full cursor-pointer h-1.5 bg-slate-200 rounded-lg" />
+        </div>
+
+        <!-- Realtime DRO Monospace Readout -->
+        <div class="bg-slate-900 text-emerald-400 p-2.5 rounded-lg font-mono-cad text-xs tracking-tight overflow-x-auto shadow-inner flex items-center justify-between min-h-[36px]">
+          <span id="sim-dro-readout">Idle</span>
+        </div>
+
+        <!-- Summary text -->
+        <div id="sim-summary" class="text-xs text-slate-500 font-medium">
+          No simulation yet
+        </div>
+      </div>
+
+      <!-- 3. DOWNLOAD & EXPORT BAR -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="text-xs text-slate-600">
+          <span class="font-bold text-slate-900">Output Formats:</span> Fanuc G-Code (.NC) with ISO 6983 standard &amp; 2D CAD (.DXF)
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-view-gcode" disabled class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5">
+            <i data-lucide="code" class="w-4 h-4"></i>
+            <span>View G-Code</span>
+          </button>
+          <button id="btn-download-dxf" disabled class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            <span>Download DXF</span>
+          </button>
+          <button id="btn-download-nc" disabled class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            <span>Download G-Code (.NC)</span>
+          </button>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Modal: View G-Code Text -->
+  <div id="gcode-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-3xl flex flex-col max-h-[85vh] overflow-hidden">
+      <div class="flex items-center justify-between p-4 border-b border-slate-200">
+        <div class="flex items-center gap-2">
+          <i data-lucide="file-text" class="w-5 h-5 text-blue-600"></i>
+          <h3 class="font-bold text-slate-900">Generated Fanuc G-Code</h3>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-copy-gcode" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition border border-blue-200 flex items-center gap-1">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span>Copy Code</span>
+          </button>
+          <button id="btn-close-modal" class="p-1 text-slate-400 hover:text-slate-600 rounded-lg">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+      <div class="p-4 flex-1 overflow-y-auto bg-slate-950">
+        <pre id="gcode-modal-content" class="font-mono-cad text-emerald-400 text-xs leading-relaxed"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lucide Icon Initialization -->
+  <script>
+    lucide.createIcons();
+  </script>
+  <!-- Main App Module -->
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
+
