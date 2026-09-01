@@ -1,5 +1,5 @@
 numpy>=1.21,<2.0
-opencv-python>=4.5,<5.0
+opencv-python-headless>=4.5,<5.0
 ezdxf>=1.1,<2.0
 fastapi>=0.110.0,<1.0.0
 python-multipart>=0.0.9
