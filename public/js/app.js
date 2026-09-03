@@ -1,29 +1,23 @@
-/**
- * Main Web Application Controller for ImageToGCode
- */
-
 import { ImagePreviewViewer } from './preview.js';
 import { CncSimulator } from './simulator.js';
-import { i18n } from './i18n.js';
+import { i18n, renderAllIcons } from './i18n.js';
 
 class ImageToGCodeWebApp {
   constructor() {
     this.selectedFile = null;
-    this.conversionResult = null;
 
     this._initElements();
     this._initViewers();
     this._bindEvents();
     this._loadDefaultPreset();
 
-    // Initialize UI language
+    // Initialize UI language and ensure all icons render
     i18n.updateDOM();
+    renderAllIcons();
   }
 
   _initElements() {
-    // Language Toggle
     this.btnLangToggle = document.getElementById('btn-lang-toggle');
-
     // Form Inputs
     this.imageInput = document.getElementById('image-input');
     this.dropZone = document.getElementById('drop-zone');
@@ -270,17 +264,15 @@ class ImageToGCodeWebApp {
     this.copyGcodeBtn.addEventListener('click', async () => {
       if (this.conversionResult && this.conversionResult.gcode) {
         await navigator.clipboard.writeText(this.conversionResult.gcode);
-        this.copyGcodeBtn.textContent = i18n.lang === 'vi' ? 'Đã sao chép!' : 'Copied!';
+        const span = this.copyGcodeBtn.querySelector('span');
+        if (span) {
+          span.textContent = i18n.lang === 'vi' ? 'Đã sao chép!' : 'Copied!';
+        }
         setTimeout(() => {
-          this.copyGcodeBtn.textContent = i18n.t('btnCopy');
-        }, 1800);
-      }
-    });
+          if (span) {
+            span.textContent = i18n.t('btnCopy');
   }
 
-  _updateLanguageUI() {
-    this.previewViewer.render();
-    this.simulator.render();
     if (!this.selectedFile) {
       this.previewInfo.textContent = i18n.t('previewDefaultText');
       this.fileNameDisplay.textContent = i18n.t('noFileSelected');

@@ -6,8 +6,13 @@
   <title>Image to G-Code | Fanuc CNC Web Converter & Simulator</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Lucide Icons -->
+  <!-- Lucide Icons with CDN Fallback -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    if (!window.lucide) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"><\/script>');
+    }
+  </script>
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -68,7 +73,7 @@
         <div>
           <div class="flex items-center gap-2 mb-3">
             <i data-lucide="file-code" class="w-4 h-4 text-blue-600"></i>
-            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec1Title">1. Bản vẽ đầu vào hoặc File DXF</h2>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec1Title">1. 📁 Bản vẽ đầu vào hoặc File DXF</h2>
           </div>
 
           <!-- Drop Zone -->
@@ -93,7 +98,7 @@
         <div>
           <div class="flex items-center gap-2 mb-2">
             <i data-lucide="ruler" class="w-4 h-4 text-blue-600"></i>
-            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec2Title">2. Căn chỉnh tỷ lệ & Kích thước</h2>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec2Title">2. 📐 Căn chỉnh tỷ lệ & Kích thước</h2>
           </div>
 
           <div class="space-y-2">
@@ -118,7 +123,7 @@
         <div>
           <div class="flex items-center gap-2 mb-3">
             <i data-lucide="settings-2" class="w-4 h-4 text-blue-600"></i>
-            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec3Title">3. Thông số gia công & Dao cụ</h2>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec3Title">3. ⚙️ Thông số gia công & Dao cụ</h2>
           </div>
 
           <div class="space-y-2 text-xs">
@@ -174,7 +179,7 @@
           <span data-i18n="btnGenerate">Tạo mã G-Code</span>
         </button>
         <button id="btn-reset" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs py-2 px-3 rounded-lg border border-slate-200 transition cursor-pointer" data-i18n="btnReset">
-          Mặc định
+          🔄 Mặc định
         </button>
       </div>
 
@@ -191,7 +196,7 @@
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-blue-600"></span>
-            <h3 class="text-sm font-bold text-slate-900" data-i18n="previewTitle">1. Xem trước Bản vẽ & DXF (Nhận diện & Tọa độ)</h3>
+            <h3 class="text-sm font-bold text-slate-900" data-i18n="previewTitle">1. 🖼️ Xem trước Bản vẽ & DXF (Nhận diện & Tọa độ)</h3>
           </div>
           <div class="flex items-center gap-3 text-xs text-slate-600 select-none">
             <label class="flex items-center gap-1.5 cursor-pointer">
@@ -222,7 +227,7 @@
               -
             </button>
             <button id="btn-preview-fit" title="Căn vừa khung / Fit View" class="px-2 h-6 flex items-center justify-center text-[10px] font-bold text-slate-700 hover:bg-slate-100 rounded transition cursor-pointer" data-i18n="previewFit">
-              Vừa khung
+              🎯 Vừa khung
             </button>
           </div>
         </div>
@@ -241,7 +246,7 @@
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
-            <h3 class="text-sm font-bold text-slate-900" data-i18n="simTitle">2. Mô phỏng đường chạy dao (Màn hình CAD/CAM)</h3>
+            <h3 class="text-sm font-bold text-slate-900" data-i18n="simTitle">2. 🎬 Mô phỏng đường chạy dao (Màn hình CAD/CAM)</h3>
           </div>
 
           <!-- Toggles -->
@@ -275,16 +280,16 @@
           
           <div class="flex items-center gap-1.5">
             <button id="btn-sim-play" disabled class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md text-xs font-bold transition shadow-sm cursor-pointer" data-i18n="simPlay">
-              Phát
+              ▶️ Phát
             </button>
             <button id="btn-sim-step-back" disabled title="Bước lùi / Step Back" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition cursor-pointer">
-              |&lt;
+              ⏮️
             </button>
             <button id="btn-sim-step-forward" disabled title="Bước tới / Step Forward" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition cursor-pointer">
-              &gt;|
+              ⏭️
             </button>
             <button id="btn-sim-restart" disabled class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition cursor-pointer" data-i18n="simRestart">
-              Bắt đầu lại
+              🔄 Bắt đầu lại
             </button>
 
             <!-- Speed control -->
@@ -327,15 +332,15 @@
         <div class="flex items-center gap-2">
           <button id="btn-view-gcode" disabled class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5 cursor-pointer">
             <i data-lucide="code" class="w-4 h-4"></i>
-            <span data-i18n="btnViewGcode">Xem mã G-Code</span>
+            <span data-i18n="btnViewGcode">📄 Xem mã G-Code</span>
           </button>
           <button id="btn-download-dxf" disabled class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5 cursor-pointer">
             <i data-lucide="download" class="w-4 h-4"></i>
-            <span data-i18n="btnDownloadDxf">Tải file .DXF</span>
+            <span data-i18n="btnDownloadDxf">💾 Tải file .DXF</span>
           </button>
           <button id="btn-download-nc" disabled class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer">
             <i data-lucide="download" class="w-4 h-4"></i>
-            <span data-i18n="btnDownloadNc">Tải file .NC</span>
+            <span data-i18n="btnDownloadNc">📥 Tải file .NC</span>
           </button>
         </div>
       </div>
@@ -349,7 +354,7 @@
       <div class="flex items-center justify-between p-4 border-b border-slate-200">
         <div class="flex items-center gap-2">
           <i data-lucide="file-text" class="w-5 h-5 text-blue-600"></i>
-          <h3 class="font-bold text-slate-900" data-i18n="modalTitle">Mã G-Code Fanuc CNC xuất ra</h3>
+          <h3 class="font-bold text-slate-900" data-i18n="modalTitle">📄 Mã G-Code Fanuc CNC xuất ra</h3>
         </div>
         <div class="flex items-center gap-2">
           <button id="btn-copy-gcode" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition border border-blue-200 flex items-center gap-1 cursor-pointer">
@@ -366,12 +371,18 @@
       </div>
       <div class="p-3 bg-slate-50 border-t border-slate-200 flex justify-end">
         <button id="btn-close-modal-bottom" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer" data-i18n="btnClose">
-          Đóng
+          ✕ Đóng
         </button>
       </div>
     </div>
   </div>
 
+  <!-- Initialize Icons -->
+  <script>
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+      window.lucide.createIcons();
+    }
+  </script>
   <script type="module" src="/js/app.js"></script>
 </body>
 </html>
