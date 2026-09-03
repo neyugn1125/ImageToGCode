@@ -1,178 +1,185 @@
 /**
  * Internationalization (i18n) Module
+ * Standard CNC Terminology for Fanuc Machining & CAM Simulation
  * Supports Tiếng Việt (VI) and English (EN)
  */
 
 export const translations = {
   vi: {
-    // Header
+    // Tiêu đề đầu trang
     appTitle: "Chuyển ảnh sang G-Code",
-    appSubtitle: "Tự động nhận diện biên dạng, phân cấp cắt gọt và mô phỏng CAM chuẩn Fanuc CNC",
+    appSubtitle: "Tự động nhận dạng biên dạng hình học, thiết lập thứ tự cắt và mô phỏng quỹ đạo CAM chuẩn Fanuc CNC",
     apiDocs: "Tài liệu API",
 
-    // Section 1: Upload
-    sec1Title: "1. Bản vẽ đầu vào hoặc File DXF",
-    dropPrompt: "Kéo thả bản vẽ hoặc file DXF vào đây",
-    dropOrBrowse: "hoặc chọn file từ máy tính",
-    dropFormats: "Hỗ trợ định dạng PNG, JPG, BMP, TIFF, DXF",
-    selectedFileLabel: "File đã chọn:",
-    noFileSelected: "Chưa chọn file",
+    // Mục 1: Nạp file bản vẽ / CAD
+    sec1Title: "1. Bản vẽ chi tiết hoặc File 2D CAD (DXF)",
+    dropPrompt: "Kéo thả file bản vẽ (ảnh) hoặc file CAD .DXF vào đây",
+    dropOrBrowse: "hoặc bấm để chọn file từ máy tính",
+    dropFormats: "Định dạng hỗ trợ: PNG, JPG, BMP, TIFF, DXF",
+    selectedFileLabel: "File bản vẽ đã chọn:",
+    noFileSelected: "Chưa nạp file bản vẽ",
+    stripDimensions: "Tự động lọc bỏ đường gióng kích thước & chữ ghi chú (chỉ lấy biên dạng)",
 
-    // Section 2: Calibration
-    sec2Title: "2. Căn chỉnh tỷ lệ & Kích thước",
-    stripDimensions: "Loại bỏ đường gióng kích thước & chữ ký hiệu",
-    refWidth: "Chiều rộng thực tế (mm)",
-    refHeight: "Chiều cao thực tế (mm)",
-    pixelsPerMm: "Tỷ lệ pixel / mm (px/mm)",
+    // Mục 2: Căn chuẩn tỷ lệ & Kích thước phôi
+    sec2Title: "2. Căn chuẩn tỷ lệ & Kích thước phôi",
+    refWidth: "Kích thước chuẩn phương X (mm)",
+    refHeight: "Kích thước chuẩn phương Y (mm)",
+    pixelsPerMm: "Độ phân giải tỷ lệ (px/mm)",
 
-    // Section 3: Machining & Tool
-    sec3Title: "3. Thông số gia công & Dao cụ",
-    cutDepth: "Chiều sâu cắt Z (mm)",
-    plungeFeed: "Bước tiến xuống dao (mm/phút)",
-    cutFeed: "Bước tiến cắt (mm/phút)",
-    spindleRpm: "Tốc độ trục chính (vòng/phút)",
-    safeZ: "Cao độ an toàn Safe Z (mm)",
-    approachZ: "Cao độ tiếp cận Approach Z (mm)",
-    toolDia: "Đường kính dao Ø (mm)",
-    toolNum: "Số hiệu dao (T)",
-    toolOffset: "Bù chiều dài dao (H)",
-    programNum: "Số chương trình (O)",
+    // Mục 3: Chế độ cắt & Thông số dao phay
+    sec3Title: "3. Chế độ cắt & Thông số dao phay",
+    cutDepth: "Chiều sâu cắt Z (mm) [Z Final]",
+    plungeFeed: "Bước tiến xuống dao Fz (mm/phút)",
+    cutFeed: "Bước tiến cắt gọt F (mm/phút)",
+    spindleRpm: "Tốc độ trục chính S (vòng/phút)",
+    safeZ: "Mặt phẳng lùi dao an toàn (Safe Z mm)",
+    approachZ: "Mặt phẳng tiếp cận phôi (Approach Z mm)",
+    toolDia: "Đường kính dao phay Ø (mm)",
+    toolNum: "Số hiệu ổ dao (T)",
+    toolOffset: "Mã bù chiều dài dao (H)",
+    programNum: "Số thứ tự chương trình (O)",
 
-    // Action buttons
-    btnGenerate: "Tạo mã G-Code",
-    btnReset: "Mặc định",
-    btnDownloadNc: "Tải file .NC",
-    btnDownloadDxf: "Tải file .DXF",
-    btnViewGcode: "Xem mã G-Code",
+    // Các nút chức năng
+    btnGenerate: "Xuất chương trình G-Code",
+    btnReset: "Khôi phục thông số chuẩn",
+    btnDownloadNc: "Tải file NC (Fanuc)",
+    btnDownloadDxf: "Xuất file CAD (.DXF)",
+    btnViewGcode: "Xem khối lệnh G-Code",
 
-    // Panel 1: Preview
-    previewTitle: "1. Xem trước Bản vẽ & DXF (Nhận diện & Tọa độ)",
-    tagDetection: "Nhãn (G54/Bao)",
-    tagGrid: "Lưới",
-    tagAxes: "Trục (+X/+Y)",
+    // Khung 1: Kiểm tra hình học & Gốc phôi G54
+    previewTitle: "1. Kiểm tra hình học bản vẽ & Tọa độ gốc phôi (G54)",
+    tagDetection: "Gốc G54 / Phôi bao",
+    tagGrid: "Lưới tọa độ",
+    tagAxes: "Hệ trục máy (+X/+Y)",
     previewFit: "Vừa khung",
-    previewDefaultText: "Chọn ảnh bản vẽ hoặc file DXF để xem trước (Cuộn: Zoom | Kéo: Pan | Nhấp đúp: Vừa khung)",
-    previewEmpty: "Chưa có ảnh hoặc file DXF để xem trước",
-    calibTag: "Chuẩn 10x10mm",
-    g54Origin: "Gốc G54 (0,0)",
+    previewDefaultText: "Nạp bản vẽ 2D hoặc file DXF để kiểm tra biên dạng (Cuộn: Zoom | Kéo chuột: Pan | Nhấp đúp: Vừa khung)",
+    previewEmpty: "Chưa có dữ liệu hình học hoặc file CAD để hiển thị",
+    calibTag: "Chuẩn đo 10x10 mm",
+    g54Origin: "Gốc gia công G54 (X0, Y0)",
 
-    // Panel 2: Simulation
-    simTitle: "2. Mô phỏng đường chạy dao (Màn hình CAD/CAM)",
-    simGrid: "Lưới & Trục",
+    // Khung 2: Mô phỏng quỹ đạo gia công CAM
+    simTitle: "2. Mô phỏng đường chạy dao CNC (Kiểm tra quỹ đạo CAM)",
+    simGrid: "Lưới & Hệ trục",
     simRapids: "Chạy dao nhanh (G00)",
-    simArrows: "Mũi tên hướng cắt",
-    simCutter: "Đầu dao (Ø)",
-    simPlay: "Phát",
+    simArrows: "Hướng chạy dao",
+    simCutter: "Vết cắt dao phay (Ø)",
+    simPlay: "Mô phỏng",
     simPause: "Tạm dừng",
-    simRestart: "Bắt đầu lại",
-    simRecenter: "Căn giữa",
-    simSpeed: "Tốc độ:",
-    simDefaultText: "Chưa có đường chạy dao. Bấm 'Tạo mã G-Code' để bắt đầu mô phỏng.",
-    simLoading: "Đang tải mô phỏng đường dao...",
+    simRestart: "Chạy lại từ đầu",
+    simRecenter: "Căn giữa phôi",
+    simSpeed: "Tốc độ mô phỏng:",
+    simDefaultText: "Chưa có quỹ đạo cắt. Bấm 'Xuất chương trình G-Code' để kiểm tra mô phỏng.",
+    simLoading: "Đang tính toán quỹ đạo gia công và biên dịch mô phỏng...",
 
-    // Modal
-    modalTitle: "Mã G-Code Fanuc CNC xuất ra",
-    btnCopy: "Sao chép mã",
+    // Thanh xuất file
+    outputFormatsLabel: "Định dạng xuất: Chương trình Fanuc CNC (.NC / ISO 6983) & Bản vẽ 2D CAD (.DXF)",
+
+    // Hộp thoại khối lệnh G-Code
+    modalTitle: "Chương trình gia công CNC Fanuc (Chuẩn ISO 6983)",
+    btnCopy: "Sao chép khối lệnh",
     btnClose: "Đóng",
 
-    // Move types
-    moveIdle: "Chờ",
-    moveRapid: "Chạy dao nhanh (G00)",
-    moveLinear: "Cắt thẳng (G01)",
-    moveArcCw: "Cung tròn CW (G02)",
-    moveArcCcw: "Cung tròn CCW (G03)",
+    // Kiểu chuyển động CNC (DRO Readout - Luôn giữ nguyên tiếng Anh chuẩn công nghiệp)
+    moveIdle: "IDLE",
+    moveRapid: "RAPID (G00)",
+    moveLinear: "LINEAR CUT (G01)",
+    moveArcCw: "CIRCULAR CW (G02)",
+    moveArcCcw: "CIRCULAR CCW (G03)",
 
-    // Messages
-    msgGenerating: "Đang tạo mã G-code và dữ liệu mô phỏng...",
-    msgSuccess: "Đã tạo mã G-code và mô phỏng thành công!",
-    msgCopied: "Đã sao chép toàn bộ mã G-code vào bộ nhớ tạm!",
-    msgCopyError: "Không thể tự động sao chép mã",
-    msgAnalyzing: "Đang phân tích hình học bản vẽ...",
+    // Thông báo trạng thái
+    msgGenerating: "Đang phân tích biên dạng hình học và xuất khối lệnh G-Code...",
+    msgSuccess: "Đã xuất chương trình G-Code và nạp quỹ đạo mô phỏng thành công!",
+    msgCopied: "Đã sao chép toàn bộ chương trình NC vào clipboard!",
+    msgCopyError: "Không thể tự động sao chép chương trình",
+    msgAnalyzing: "Đang quét nhận dạng đường bao phôi và phân cấp biên dạng cắt (Trong/Ngoài)...",
   },
   en: {
     // Header
     appTitle: "Image to G-Code",
-    appSubtitle: "Automatic 2D calibration, contour hierarchy sequencing, and standalone CAM simulation",
+    appSubtitle: "Automatic 2D contour detection, hierarchy sequencing, and Fanuc CNC CAM simulation",
     apiDocs: "API Docs",
 
     // Section 1: Upload
-    sec1Title: "1. Input Drawing or DXF",
+    sec1Title: "1. Part Drawing or 2D CAD File (DXF)",
     dropPrompt: "Drag & drop drawing or DXF file here",
     dropOrBrowse: "or browse file from computer",
-    dropFormats: "Supports PNG, JPG, BMP, TIFF, DXF",
-    selectedFileLabel: "Selected file:",
-    noFileSelected: "No file chosen",
+    dropFormats: "Supported formats: PNG, JPG, BMP, TIFF, DXF",
+    selectedFileLabel: "Selected drawing file:",
+    noFileSelected: "No drawing file loaded",
+    stripDimensions: "Auto-filter dimension lines & text annotations (contours only)",
 
     // Section 2: Calibration
-    sec2Title: "2. Calibration & Scale",
-    stripDimensions: "Strip dimension annotations / text",
-    refWidth: "Reference width (mm)",
-    refHeight: "Reference height (mm)",
-    pixelsPerMm: "Pixels per mm (px/mm)",
+    sec2Title: "2. Scale Calibration & Workpiece Size",
+    refWidth: "Reference Dimension X (mm)",
+    refHeight: "Reference Dimension Y (mm)",
+    pixelsPerMm: "Scale Factor (px/mm)",
 
-    // Section 3: Machining & Tool
-    sec3Title: "3. Machining & Tool",
-    cutDepth: "Cut depth Z (mm)",
-    plungeFeed: "Plunge feed (mm/min)",
-    cutFeed: "Cut feed (mm/min)",
-    spindleRpm: "Spindle RPM",
-    safeZ: "Safe Z (mm)",
-    approachZ: "Approach Z (mm)",
-    toolDia: "Tool diameter Ø (mm)",
-    toolNum: "Tool number (T)",
-    toolOffset: "Tool length offset (H)",
-    programNum: "Program number (O)",
+    // Section 3: Machining Parameters
+    sec3Title: "3. Cutting Parameters & End Mill Spec",
+    cutDepth: "Final Cutting Depth Z (mm)",
+    plungeFeed: "Plunge Feedrate Fz (mm/min)",
+    cutFeed: "Cutting Feedrate F (mm/min)",
+    spindleRpm: "Spindle Speed S (RPM)",
+    safeZ: "Retract Plane (Safe Z mm)",
+    approachZ: "Approach Plane (Approach Z mm)",
+    toolDia: "End Mill Diameter Ø (mm)",
+    toolNum: "Tool Station Number (T)",
+    toolOffset: "Height Offset Code (H)",
+    programNum: "Program Number (O)",
 
     // Action buttons
-    btnGenerate: "Generate G-Code",
-    btnReset: "Reset defaults",
-    btnDownloadNc: "Download .NC",
-    btnDownloadDxf: "Download .DXF",
-    btnViewGcode: "View G-Code",
+    btnGenerate: "Generate G-Code Program",
+    btnReset: "Reset Parameters",
+    btnDownloadNc: "Download .NC (Fanuc)",
+    btnDownloadDxf: "Export 2D CAD (.DXF)",
+    btnViewGcode: "Inspect G-Code Blocks",
 
     // Panel 1: Preview
-    previewTitle: "1. Image & DXF Preview (Source Drawing & Analysis)",
-    tagDetection: "Tags (G54/Env)",
-    tagGrid: "Grid",
-    tagAxes: "Axes (+X/+Y)",
-    previewFit: "Fit",
-    previewDefaultText: "Select an image or DXF to preview (Scroll: Zoom | Drag: Pan | Dbl-click: Fit)",
-    previewEmpty: "No image or DXF preview available",
+    previewTitle: "1. Geometry Inspection & Work Coordinate (G54)",
+    tagDetection: "G54 Origin / Bounds",
+    tagGrid: "Coordinate Grid",
+    tagAxes: "Machine Axes (+X/+Y)",
+    previewFit: "Fit View",
+    previewDefaultText: "Load 2D drawing or DXF to inspect geometry (Scroll: Zoom | Drag: Pan | Dbl-click: Fit)",
+    previewEmpty: "No geometry or CAD file available to display",
     calibTag: "10x10 mm Calib",
-    g54Origin: "G54 (0,0)",
+    g54Origin: "G54 Work Zero (X0, Y0)",
 
     // Panel 2: Simulation
-    simTitle: "2. Toolpath Simulation (Clean CAD/CAM View)",
+    simTitle: "2. CNC Toolpath Simulation & Verification (CAM)",
     simGrid: "Grid & Axes",
-    simRapids: "Rapids (G00)",
-    simArrows: "Direction Arrows",
-    simCutter: "Cutter (Ø)",
-    simPlay: "Play",
+    simRapids: "Rapid Traverse (G00)",
+    simArrows: "Cutting Direction",
+    simCutter: "Cutter Kerf (Ø)",
+    simPlay: "Simulate",
     simPause: "Pause",
     simRestart: "Restart",
-    simRecenter: "Recenter",
-    simSpeed: "Speed:",
-    simDefaultText: "No toolpath generated yet. Click 'Generate G-Code' to simulate.",
-    simLoading: "Loading toolpath simulation...",
+    simRecenter: "Center Workpiece",
+    simSpeed: "Simulation Speed:",
+    simDefaultText: "No toolpath generated yet. Click 'Generate G-Code Program' to simulate.",
+    simLoading: "Calculating toolpaths and loading simulation...",
+
+    // Export bar
+    outputFormatsLabel: "Output Formats: Fanuc CNC Program (.NC / ISO 6983) & 2D CAD (.DXF)",
 
     // Modal
-    modalTitle: "Generated Fanuc G-Code",
-    btnCopy: "Copy Code",
+    modalTitle: "Fanuc CNC NC Program Output (ISO 6983)",
+    btnCopy: "Copy Program",
     btnClose: "Close",
 
     // Move types
-    moveIdle: "Idle",
-    moveRapid: "Rapid (G00)",
-    moveLinear: "Cut (G01)",
-    moveArcCw: "Arc CW (G02)",
-    moveArcCcw: "Arc CCW (G03)",
+    moveIdle: "IDLE",
+    moveRapid: "RAPID (G00)",
+    moveLinear: "LINEAR CUT (G01)",
+    moveArcCw: "CIRCULAR CW (G02)",
+    moveArcCcw: "CIRCULAR CCW (G03)",
 
     // Messages
-    msgGenerating: "Generating Fanuc G-code and simulation...",
-    msgSuccess: "G-code and toolpath generated successfully!",
-    msgCopied: "Copied full G-code to clipboard!",
+    msgGenerating: "Analyzing geometry and generating Fanuc G-code...",
+    msgSuccess: "G-code program and CAM toolpath generated successfully!",
+    msgCopied: "Copied full NC program to clipboard!",
     msgCopyError: "Unable to auto-copy to clipboard",
-    msgAnalyzing: "Analyzing drawing geometry...",
+    msgAnalyzing: "Scanning contours and classifying cutting hierarchy (Pockets/Islands)...",
   }
 };
 
@@ -240,7 +247,11 @@ class I18nManager {
     if (lang !== 'vi' && lang !== 'en') return;
     this.currentLang = lang;
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('preferred_lang', lang);
+      try {
+        localStorage.setItem('preferred_lang', lang);
+      } catch (e) {
+        console.warn('Cannot write to localStorage:', e);
+      }
     }
     this.updateDOM();
     if (typeof window !== 'undefined') {
@@ -265,29 +276,36 @@ class I18nManager {
 
     const elements = document.querySelectorAll('[data-i18n]');
     elements.forEach((el) => {
-      const key = el.getAttribute('data-i18n');
-      const translation = this.t(key);
-      if (translation !== undefined) {
-        if (el.tagName === 'INPUT' && (el.type === 'button' || el.type === 'submit')) {
-          el.value = translation;
-        } else if (el.hasAttribute('placeholder')) {
-          el.placeholder = translation;
-        } else {
-          el.textContent = translation;
+      try {
+        const key = el.getAttribute('data-i18n');
+        const translation = this.t(key);
+        if (translation !== undefined) {
+          if (el.tagName === 'INPUT' && (el.type === 'button' || el.type === 'submit')) {
+            el.value = translation;
+          } else if (el.hasAttribute('placeholder')) {
+            el.placeholder = translation;
+          } else {
+            el.textContent = translation;
+          }
         }
+      } catch (err) {
+        console.warn('i18n translation error on element:', el, err);
       }
     });
 
-    // Update flag and label on toggle button
+    // Update flag, label, and title on toggle button
+    const btnLang = document.getElementById('btn-lang-toggle');
     const langFlag = document.getElementById('lang-flag');
     const langText = document.getElementById('lang-text');
     if (langFlag && langText) {
       if (this.currentLang === 'vi') {
         langFlag.textContent = '🇻🇳';
         langText.textContent = 'Tiếng Việt';
+        if (btnLang) btnLang.title = 'Chuyển sang English / Switch to English';
       } else {
         langFlag.textContent = '🇬🇧';
         langText.textContent = 'English';
+        if (btnLang) btnLang.title = 'Chuyển sang Tiếng Việt / Switch to Vietnamese';
       }
     }
 
@@ -298,16 +316,21 @@ class I18nManager {
 
 export const i18n = new I18nManager();
 
-// Automatically wire language toggle button as soon as DOM is ready
+// Single-source event binding for language toggle button
 export function bindLangToggle() {
   const btn = document.getElementById('btn-lang-toggle');
-  if (btn && !btn._hasLangListener) {
-    btn._hasLangListener = true;
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
+  if (btn) {
+    btn.onclick = (e) => {
+      if (e) e.preventDefault();
       i18n.toggle();
-    });
+    };
   }
+}
+
+// Global hook
+if (typeof window !== 'undefined') {
+  window.i18n = i18n;
+  window.toggleLanguage = () => i18n.toggle();
 }
 
 if (typeof document !== 'undefined') {

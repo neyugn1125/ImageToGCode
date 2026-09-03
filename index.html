@@ -41,13 +41,13 @@
             <span class="text-blue-600 font-semibold">| Fanuc CNC</span>
           </h1>
           <p class="text-xs text-slate-500 hidden sm:block" data-i18n="appSubtitle">
-            Tự động nhận diện biên dạng, phân cấp cắt gọt và mô phỏng CAM chuẩn Fanuc CNC
+            Tự động nhận dạng biên dạng hình học, thiết lập thứ tự cắt và mô phỏng quỹ đạo CAM chuẩn Fanuc CNC
           </p>
         </div>
       </div>
       <div class="flex items-center gap-2">
         <!-- Language Switcher Toggle -->
-        <button id="btn-lang-toggle" type="button" title="Chuyển đổi ngôn ngữ / Switch Language" class="text-xs text-slate-700 hover:text-blue-600 px-3 py-1.5 rounded-md border border-slate-200 hover:border-blue-300 font-semibold flex items-center gap-1.5 transition bg-slate-50 cursor-pointer shadow-sm">
+        <button id="btn-lang-toggle" type="button" onclick="window.toggleLanguage &amp;&amp; window.toggleLanguage()" title="Chuyển đổi ngôn ngữ / Switch Language" class="text-xs text-slate-700 hover:text-blue-600 px-3 py-1.5 rounded-md border border-slate-200 hover:border-blue-300 font-semibold flex items-center gap-1.5 transition bg-slate-50 cursor-pointer shadow-sm select-none">
           <span id="lang-flag">🇻🇳</span>
           <span id="lang-text">Tiếng Việt</span>
         </button>
@@ -73,22 +73,22 @@
         <div>
           <div class="flex items-center gap-2 mb-3">
             <i data-lucide="file-code" class="w-4 h-4 text-blue-600"></i>
-            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec1Title">1. Bản vẽ đầu vào hoặc File DXF</h2>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec1Title">1. Bản vẽ chi tiết hoặc File 2D CAD (DXF)</h2>
           </div>
 
           <!-- Drop Zone -->
           <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-lg p-4 text-center cursor-pointer transition bg-slate-50 flex flex-col items-center justify-center relative">
             <input type="file" id="image-input" accept=".png,.jpg,.jpeg,.bmp,.tif,.tiff,.dxf" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
             <i data-lucide="upload-cloud" class="w-7 h-7 text-slate-400 mb-2"></i>
-            <span class="text-xs font-semibold text-slate-700" data-i18n="dropPrompt">Kéo thả bản vẽ hoặc file DXF vào đây</span>
-            <span class="text-[11px] text-slate-400 mt-0.5" data-i18n="dropFormats">Hỗ trợ định dạng PNG, JPG, BMP, TIFF, DXF</span>
-            <div id="file-name-display" class="text-xs text-blue-600 font-medium mt-2 truncate max-w-[220px]" data-i18n="noFileSelected">Chưa chọn file</div>
+            <span class="text-xs font-semibold text-slate-700" data-i18n="dropPrompt">Kéo thả file bản vẽ (ảnh) hoặc file CAD .DXF vào đây</span>
+            <span class="text-[11px] text-slate-400 mt-0.5" data-i18n="dropFormats">Định dạng hỗ trợ: PNG, JPG, BMP, TIFF, DXF</span>
+            <div id="file-name-display" class="text-xs text-blue-600 font-medium mt-2 truncate max-w-[220px]" data-i18n="noFileSelected">Chưa nạp file bản vẽ</div>
           </div>
 
           <!-- Strip Dimensions Checkbox -->
           <label class="flex items-center gap-2 mt-3 text-xs text-slate-700 cursor-pointer select-none">
             <input type="checkbox" id="strip-dimensions" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4" />
-            <span data-i18n="stripDimensions">Loại bỏ đường gióng kích thước & chữ ký hiệu</span>
+            <span data-i18n="stripDimensions">Tự động lọc bỏ đường gióng kích thước & chữ ghi chú (chỉ lấy biên dạng)</span>
           </label>
         </div>
 
@@ -98,20 +98,20 @@
         <div>
           <div class="flex items-center gap-2 mb-2">
             <i data-lucide="ruler" class="w-4 h-4 text-blue-600"></i>
-            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec2Title">2. Căn chỉnh tỷ lệ & Kích thước</h2>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec2Title">2. Căn chuẩn tỷ lệ & Kích thước phôi</h2>
           </div>
 
           <div class="space-y-2">
             <div class="flex items-center justify-between gap-2">
-              <label for="ref-width" class="text-xs text-slate-600" data-i18n="refWidth">Chiều rộng thực tế (mm)</label>
+              <label for="ref-width" class="text-xs text-slate-600" data-i18n="refWidth">Kích thước chuẩn phương X (mm)</label>
               <input type="number" step="any" id="ref-width" placeholder="e.g. 100" class="w-24 text-right text-xs px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="ref-height" class="text-xs text-slate-600" data-i18n="refHeight">Chiều cao thực tế (mm)</label>
+              <label for="ref-height" class="text-xs text-slate-600" data-i18n="refHeight">Kích thước chuẩn phương Y (mm)</label>
               <input type="number" step="any" id="ref-height" placeholder="e.g. 80" class="w-24 text-right text-xs px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="pixels-per-mm" class="text-xs text-slate-600" data-i18n="pixelsPerMm">Tỷ lệ pixel / mm (px/mm)</label>
+              <label for="pixels-per-mm" class="text-xs text-slate-600" data-i18n="pixelsPerMm">Độ phân giải tỷ lệ (px/mm)</label>
               <input type="number" step="any" id="pixels-per-mm" placeholder="e.g. 5.0" class="w-24 text-right text-xs px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
@@ -123,48 +123,48 @@
         <div>
           <div class="flex items-center gap-2 mb-3">
             <i data-lucide="settings-2" class="w-4 h-4 text-blue-600"></i>
-            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec3Title">3. Thông số gia công & Dao cụ</h2>
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide" data-i18n="sec3Title">3. Chế độ cắt & Thông số dao phay</h2>
           </div>
 
           <div class="space-y-2 text-xs">
             <div class="flex items-center justify-between gap-2">
-              <label for="cut-depth" class="text-slate-600" data-i18n="cutDepth">Chiều sâu cắt Z (mm)</label>
+              <label for="cut-depth" class="text-slate-600" data-i18n="cutDepth">Chiều sâu cắt Z (mm) [Z Final]</label>
               <input type="number" step="any" id="cut-depth" value="-5.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="plunge-feed" class="text-slate-600" data-i18n="plungeFeed">Bước tiến xuống dao (mm/phút)</label>
+              <label for="plunge-feed" class="text-slate-600" data-i18n="plungeFeed">Bước tiến xuống dao Fz (mm/phút)</label>
               <input type="number" step="any" id="plunge-feed" value="100.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="cut-feed" class="text-slate-600" data-i18n="cutFeed">Bước tiến cắt (mm/phút)</label>
+              <label for="cut-feed" class="text-slate-600" data-i18n="cutFeed">Bước tiến cắt gọt F (mm/phút)</label>
               <input type="number" step="any" id="cut-feed" value="300.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="spindle-rpm" class="text-slate-600" data-i18n="spindleRpm">Tốc độ trục chính (vòng/phút)</label>
+              <label for="spindle-rpm" class="text-slate-600" data-i18n="spindleRpm">Tốc độ trục chính S (vòng/phút)</label>
               <input type="number" id="spindle-rpm" value="1500" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="safe-z" class="text-slate-600" data-i18n="safeZ">Cao độ an toàn Safe Z (mm)</label>
+              <label for="safe-z" class="text-slate-600" data-i18n="safeZ">Mặt phẳng lùi dao an toàn (Safe Z mm)</label>
               <input type="number" step="any" id="safe-z" value="50.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="approach-z" class="text-slate-600" data-i18n="approachZ">Cao độ tiếp cận Approach Z (mm)</label>
+              <label for="approach-z" class="text-slate-600" data-i18n="approachZ">Mặt phẳng tiếp cận phôi (Approach Z mm)</label>
               <input type="number" step="any" id="approach-z" value="2.0" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="tool-dia" class="text-slate-600 font-semibold text-blue-700" data-i18n="toolDia">Đường kính dao Ø (mm)</label>
+              <label for="tool-dia" class="text-slate-600 font-semibold text-blue-700" data-i18n="toolDia">Đường kính dao phay Ø (mm)</label>
               <input type="number" step="any" id="tool-dia" value="3.0" class="w-24 text-right font-bold text-blue-700 px-2.5 py-1.5 border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="tool-number" class="text-slate-600" data-i18n="toolNum">Số hiệu dao (T)</label>
+              <label for="tool-number" class="text-slate-600" data-i18n="toolNum">Số hiệu ổ dao (T)</label>
               <input type="number" id="tool-number" value="1" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="tool-offset" class="text-slate-600" data-i18n="toolOffset">Bù chiều dài dao (H)</label>
+              <label for="tool-offset" class="text-slate-600" data-i18n="toolOffset">Mã bù chiều dài dao (H)</label>
               <input type="number" id="tool-offset" value="1" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
-              <label for="program-number" class="text-slate-600" data-i18n="programNum">Số chương trình (O)</label>
+              <label for="program-number" class="text-slate-600" data-i18n="programNum">Số thứ tự chương trình (O)</label>
               <input type="number" id="program-number" value="1000" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
@@ -176,11 +176,11 @@
       <div class="flex flex-col gap-2">
         <button id="btn-generate" type="button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center gap-2 cursor-pointer">
           <i data-lucide="play" class="w-4 h-4 fill-current"></i>
-          <span data-i18n="btnGenerate">Tạo mã G-Code</span>
+          <span data-i18n="btnGenerate">Xuất chương trình G-Code</span>
         </button>
         <button id="btn-reset" type="button" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs py-2 px-3 rounded-lg border border-slate-200 transition cursor-pointer flex items-center justify-center gap-1.5">
           <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-          <span data-i18n="btnReset">Mặc định</span>
+          <span data-i18n="btnReset">Khôi phục thông số chuẩn</span>
         </button>
       </div>
 
@@ -197,20 +197,20 @@
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
           <div class="flex items-center gap-2">
             <i data-lucide="image" class="w-4 h-4 text-blue-600"></i>
-            <h3 class="text-sm font-bold text-slate-900" data-i18n="previewTitle">1. Xem trước Bản vẽ & DXF (Nhận diện & Tọa độ)</h3>
+            <h3 class="text-sm font-bold text-slate-900" data-i18n="previewTitle">1. Kiểm tra hình học bản vẽ & Tọa độ gốc phôi (G54)</h3>
           </div>
           <div class="flex items-center gap-3 text-xs text-slate-600 select-none">
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-show-tags" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span data-i18n="tagDetection">Nhãn (G54/Bao)</span>
+              <span data-i18n="tagDetection">Gốc G54 / Phôi bao</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-preview-grid" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span data-i18n="tagGrid">Lưới</span>
+              <span data-i18n="tagGrid">Lưới tọa độ</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-preview-axes" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span data-i18n="tagAxes">Trục (+X/+Y)</span>
+              <span data-i18n="tagAxes">Hệ trục máy (+X/+Y)</span>
             </label>
           </div>
         </div>
@@ -235,7 +235,7 @@
 
         <!-- Preview Footer -->
         <div class="flex items-center justify-between text-xs text-slate-500 font-medium pt-1">
-          <div id="preview-info" data-i18n="previewDefaultText">Chọn ảnh bản vẽ hoặc file DXF để xem trước (Cuộn: Zoom | Kéo: Pan | Nhấp đúp: Vừa khung)</div>
+          <div id="preview-info" data-i18n="previewDefaultText">Nạp bản vẽ 2D hoặc file DXF để kiểm tra biên dạng (Cuộn: Zoom | Kéo chuột: Pan | Nhấp đúp: Vừa khung)</div>
           <div id="preview-coords" class="font-mono-cad text-slate-700"></div>
         </div>
       </div>
@@ -247,14 +247,14 @@
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
           <div class="flex items-center gap-2">
             <i data-lucide="activity" class="w-4 h-4 text-emerald-600"></i>
-            <h3 class="text-sm font-bold text-slate-900" data-i18n="simTitle">2. Mô phỏng đường chạy dao (Màn hình CAD/CAM)</h3>
+            <h3 class="text-sm font-bold text-slate-900" data-i18n="simTitle">2. Mô phỏng đường chạy dao CNC (Kiểm tra quỹ đạo CAM)</h3>
           </div>
 
           <!-- Toggles -->
           <div class="flex items-center gap-4 text-xs text-slate-600">
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-grid" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span data-i18n="simGrid">Lưới & Trục</span>
+              <span data-i18n="simGrid">Lưới & Hệ trục</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-rapids" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
@@ -262,11 +262,11 @@
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-arrows" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span data-i18n="simArrows">Mũi tên hướng cắt</span>
+              <span data-i18n="simArrows">Hướng chạy dao</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="toggle-cutter" checked class="rounded border-slate-300 text-blue-600 w-3.5 h-3.5" />
-              <span data-i18n="simCutter">Đầu dao (Ø)</span>
+              <span data-i18n="simCutter">Vết cắt dao phay (Ø)</span>
             </label>
           </div>
         </div>
@@ -282,22 +282,22 @@
           <div class="flex items-center gap-1.5">
             <button id="btn-sim-play" disabled type="button" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md text-xs font-bold transition shadow-sm cursor-pointer flex items-center gap-1.5">
               <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
-              <span data-i18n="simPlay">Phát</span>
+              <span data-i18n="simPlay">Mô phỏng</span>
             </button>
-            <button id="btn-sim-step-back" disabled type="button" title="Bước lùi / Step Back" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition cursor-pointer">
+            <button id="btn-sim-step-back" disabled type="button" title="Lùi 1 Block lệnh / Step Back" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition cursor-pointer">
               |&lt;
             </button>
-            <button id="btn-sim-step-forward" disabled type="button" title="Bước tới / Step Forward" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition cursor-pointer">
+            <button id="btn-sim-step-forward" disabled type="button" title="Tới 1 Block lệnh / Step Forward" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition cursor-pointer">
               &gt;|
             </button>
             <button id="btn-sim-restart" disabled type="button" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 disabled:opacity-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition cursor-pointer flex items-center gap-1">
               <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
-              <span data-i18n="simRestart">Bắt đầu lại</span>
+              <span data-i18n="simRestart">Chạy lại từ đầu</span>
             </button>
 
             <!-- Speed control -->
             <div class="flex items-center gap-1.5 ml-3">
-              <span class="text-[11px] text-slate-500 font-medium" data-i18n="simSpeed">Tốc độ:</span>
+              <span class="text-[11px] text-slate-500 font-medium" data-i18n="simSpeed">Tốc độ mô phỏng:</span>
               <input type="range" id="sim-speed-slider" min="1" max="50" value="5" class="w-20 cursor-pointer" />
               <span id="sim-speed-label" class="text-xs font-bold text-slate-700 w-7">5x</span>
             </div>
@@ -306,7 +306,7 @@
           <div>
             <button id="btn-sim-recenter" type="button" class="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 transition flex items-center gap-1.5 cursor-pointer">
               <i data-lucide="maximize" class="w-3.5 h-3.5"></i>
-              <span data-i18n="simRecenter">Căn giữa</span>
+              <span data-i18n="simRecenter">Căn giữa phôi</span>
             </button>
           </div>
         </div>
@@ -318,32 +318,33 @@
 
         <!-- Realtime DRO Monospace Readout -->
         <div class="bg-slate-900 text-emerald-400 p-2.5 rounded-lg font-mono-cad text-xs tracking-tight overflow-x-auto shadow-inner flex items-center justify-between min-h-[36px]">
-          <span id="sim-dro-readout">Sẵn sàng</span>
+          <span id="sim-dro-readout">SẴN SÀNG</span>
+          <span id="sim-dro-readout">IDLE</span>
         </div>
 
         <!-- Summary text -->
         <div id="sim-summary" class="text-xs text-slate-500 font-medium" data-i18n="simDefaultText">
-          Chưa có đường chạy dao. Bấm 'Tạo mã G-Code' để bắt đầu mô phỏng.
+          Chưa có quỹ đạo cắt. Bấm 'Xuất chương trình G-Code' để kiểm tra mô phỏng.
         </div>
       </div>
 
       <!-- 3. DOWNLOAD & EXPORT BAR -->
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-wrap items-center justify-between gap-3">
-        <div class="text-xs text-slate-600">
-          <span class="font-bold text-slate-900">Output Formats:</span> Fanuc G-Code (.NC) ISO 6983 &amp; 2D CAD (.DXF)
+        <div class="text-xs text-slate-600" data-i18n="outputFormatsLabel">
+          Định dạng xuất: Chương trình Fanuc CNC (.NC / ISO 6983) &amp; Bản vẽ 2D CAD (.DXF)
         </div>
         <div class="flex items-center gap-2">
           <button id="btn-view-gcode" disabled type="button" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5 cursor-pointer">
             <i data-lucide="code" class="w-4 h-4"></i>
-            <span data-i18n="btnViewGcode">Xem mã G-Code</span>
+            <span data-i18n="btnViewGcode">Xem khối lệnh G-Code</span>
           </button>
           <button id="btn-download-dxf" disabled type="button" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5 cursor-pointer">
             <i data-lucide="download" class="w-4 h-4"></i>
-            <span data-i18n="btnDownloadDxf">Tải file .DXF</span>
+            <span data-i18n="btnDownloadDxf">Xuất file CAD (.DXF)</span>
           </button>
           <button id="btn-download-nc" disabled type="button" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer">
             <i data-lucide="download" class="w-4 h-4"></i>
-            <span data-i18n="btnDownloadNc">Tải file .NC</span>
+            <span data-i18n="btnDownloadNc">Tải file NC (Fanuc)</span>
           </button>
         </div>
       </div>
@@ -357,12 +358,12 @@
       <div class="flex items-center justify-between p-4 border-b border-slate-200">
         <div class="flex items-center gap-2">
           <i data-lucide="file-text" class="w-5 h-5 text-blue-600"></i>
-          <h3 class="font-bold text-slate-900" data-i18n="modalTitle">Mã G-Code Fanuc CNC xuất ra</h3>
+          <h3 class="font-bold text-slate-900" data-i18n="modalTitle">Chương trình gia công CNC Fanuc (Chuẩn ISO 6983)</h3>
         </div>
         <div class="flex items-center gap-2">
           <button id="btn-copy-gcode" type="button" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition border border-blue-200 flex items-center gap-1 cursor-pointer">
             <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-            <span data-i18n="btnCopy">Sao chép mã</span>
+            <span data-i18n="btnCopy">Sao chép khối lệnh</span>
           </button>
           <button id="btn-close-modal" type="button" class="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer">
             <i data-lucide="x" class="w-5 h-5"></i>

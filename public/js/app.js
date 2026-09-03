@@ -106,28 +106,20 @@ class ImageToGCodeWebApp {
       },
       onStatusUpdate: (state) => {
         const moveNames = {
-          idle: i18n.t('moveIdle'),
-          rapid: i18n.t('moveRapid'),
-          linear: i18n.t('moveLinear'),
-          arc_cw: i18n.t('moveArcCw'),
-          arc_ccw: i18n.t('moveArcCcw')
+          idle: 'IDLE',
+          rapid: 'RAPID (G00)',
+          linear: 'LINEAR CUT (G01)',
+          arc_cw: 'CIRCULAR CW (G02)',
+          arc_ccw: 'CIRCULAR CCW (G03)'
         };
-        const kindLabel = moveNames[state.kind] || state.kind;
+        const kindLabel = moveNames[state.kind] || (state.kind ? state.kind.toUpperCase() : 'IDLE');
         this.simDroReadout.textContent = `X: ${state.x.toFixed(2).padStart(6, ' ')} mm   Y: ${state.y.toFixed(2).padStart(6, ' ')} mm   Z: ${state.z.toFixed(2).padStart(5, ' ')} mm   |   F: ${Math.round(state.feed).toString().padStart(4, ' ')} mm/min   |   ${kindLabel}   |   ${state.currentTime.toFixed(1)}s / ${state.totalTime.toFixed(1)}s (${Math.round(state.progress)}%)`;
       }
     });
   }
 
   _bindEvents() {
-    // Language Switcher
-    if (this.btnLangToggle) {
-      this.btnLangToggle.addEventListener('click', (e) => {
-        e.preventDefault();
-        i18n.toggle();
-        this._updateLanguageUI();
-      });
-    }
-
+    // Language Switcher Synchronization
     window.addEventListener('languageChanged', () => {
       this._updateLanguageUI();
     });
@@ -276,8 +268,15 @@ class ImageToGCodeWebApp {
         setTimeout(() => {
           if (span) {
             span.textContent = i18n.t('btnCopy');
+          }
+        }, 1800);
+      }
+    });
   }
 
+  _updateLanguageUI() {
+    this.previewViewer.render();
+    this.simulator.render();
     if (!this.selectedFile) {
       this.previewInfo.textContent = i18n.t('previewDefaultText');
       this.fileNameDisplay.textContent = i18n.t('noFileSelected');
@@ -285,6 +284,7 @@ class ImageToGCodeWebApp {
     if (!this.conversionResult) {
       this.simSummary.textContent = i18n.t('simDefaultText');
     }
+    this._updatePlayButtonState();
   }
 
   _loadDefaultPreset() {
