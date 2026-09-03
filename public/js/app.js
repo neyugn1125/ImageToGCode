@@ -121,11 +121,16 @@ class ImageToGCodeWebApp {
   _bindEvents() {
     // Language Switcher
     if (this.btnLangToggle) {
-      this.btnLangToggle.addEventListener('click', () => {
+      this.btnLangToggle.addEventListener('click', (e) => {
+        e.preventDefault();
         i18n.toggle();
         this._updateLanguageUI();
       });
     }
+
+    window.addEventListener('languageChanged', () => {
+      this._updateLanguageUI();
+    });
 
     // Image Upload
     this.imageInput.addEventListener('change', (e) => {
@@ -215,22 +220,22 @@ class ImageToGCodeWebApp {
     // Playback Controls
     this.simPlayBtn.addEventListener('click', () => {
       this.simulator.togglePlay();
-      this.simPlayBtn.textContent = this.simulator.isPlaying ? i18n.t('simPause') : i18n.t('simPlay');
+      this._updatePlayButtonState();
     });
 
     this.simStepBackBtn.addEventListener('click', () => {
       this.simulator.stepBackward();
-      this.simPlayBtn.textContent = i18n.t('simPlay');
+      this._updatePlayButtonState();
     });
 
     this.simStepForwardBtn.addEventListener('click', () => {
       this.simulator.stepForward();
-      this.simPlayBtn.textContent = i18n.t('simPlay');
+      this._updatePlayButtonState();
     });
 
     this.simRestartBtn.addEventListener('click', () => {
       this.simulator.restart();
-      this.simPlayBtn.textContent = i18n.t('simPlay');
+      this._updatePlayButtonState();
     });
 
     this.simRecenterBtn.addEventListener('click', () => {
@@ -246,7 +251,7 @@ class ImageToGCodeWebApp {
 
     this.simScrubber.addEventListener('input', (e) => {
       this.simulator.seek(Number(e.target.value) / 100.0);
-      this.simPlayBtn.textContent = i18n.t('simPlay');
+      this._updatePlayButtonState();
     });
 
     // Modal Events
@@ -499,6 +504,16 @@ class ImageToGCodeWebApp {
     }
   }
 
+  _updatePlayButtonState() {
+    const isPlaying = this.simulator && this.simulator.isPlaying;
+    const playText = this.simPlayBtn.querySelector('span');
+    if (playText) {
+      playText.textContent = isPlaying ? i18n.t('simPause') : i18n.t('simPlay');
+    } else {
+      this.simPlayBtn.textContent = isPlaying ? i18n.t('simPause') : i18n.t('simPlay');
+    }
+  }
+
   _showStatus(message, type = 'info') {
     const colorClasses = {
       info: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -512,7 +527,15 @@ class ImageToGCodeWebApp {
   }
 }
 
-// Bootstrap on DOM ready
-document.addEventListener('DOMContentLoaded', () => {
-  new ImageToGCodeWebApp();
-});
+// Bootstrap on DOM ready or immediately if already interactive/complete
+function initApp() {
+  if (!window._imageToGcodeApp) {
+    window._imageToGcodeApp = new ImageToGCodeWebApp();
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}

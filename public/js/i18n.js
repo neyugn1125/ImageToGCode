@@ -1,6 +1,6 @@
 /**
  * Internationalization (i18n) Module
- * Supports Tiếng Việt (VI) and English (EN) with full icon & emoji resilience
+ * Supports Tiếng Việt (VI) and English (EN)
  */
 
 export const translations = {
@@ -11,7 +11,7 @@ export const translations = {
     apiDocs: "Tài liệu API",
 
     // Section 1: Upload
-    sec1Title: "1. 📁 Bản vẽ đầu vào hoặc File DXF",
+    sec1Title: "1. Bản vẽ đầu vào hoặc File DXF",
     dropPrompt: "Kéo thả bản vẽ hoặc file DXF vào đây",
     dropOrBrowse: "hoặc chọn file từ máy tính",
     dropFormats: "Hỗ trợ định dạng PNG, JPG, BMP, TIFF, DXF",
@@ -19,14 +19,14 @@ export const translations = {
     noFileSelected: "Chưa chọn file",
 
     // Section 2: Calibration
-    sec2Title: "2. 📐 Căn chỉnh tỷ lệ & Kích thước",
+    sec2Title: "2. Căn chỉnh tỷ lệ & Kích thước",
     stripDimensions: "Loại bỏ đường gióng kích thước & chữ ký hiệu",
     refWidth: "Chiều rộng thực tế (mm)",
     refHeight: "Chiều cao thực tế (mm)",
     pixelsPerMm: "Tỷ lệ pixel / mm (px/mm)",
 
     // Section 3: Machining & Tool
-    sec3Title: "3. ⚙️ Thông số gia công & Dao cụ",
+    sec3Title: "3. Thông số gia công & Dao cụ",
     cutDepth: "Chiều sâu cắt Z (mm)",
     plungeFeed: "Bước tiến xuống dao (mm/phút)",
     cutFeed: "Bước tiến cắt (mm/phút)",
@@ -40,40 +40,40 @@ export const translations = {
 
     // Action buttons
     btnGenerate: "Tạo mã G-Code",
-    btnReset: "🔄 Mặc định",
-    btnDownloadNc: "📥 Tải file .NC",
-    btnDownloadDxf: "💾 Tải file .DXF",
-    btnViewGcode: "📄 Xem mã G-Code",
+    btnReset: "Mặc định",
+    btnDownloadNc: "Tải file .NC",
+    btnDownloadDxf: "Tải file .DXF",
+    btnViewGcode: "Xem mã G-Code",
 
     // Panel 1: Preview
-    previewTitle: "1. 🖼️ Xem trước Bản vẽ & DXF (Nhận diện & Tọa độ)",
+    previewTitle: "1. Xem trước Bản vẽ & DXF (Nhận diện & Tọa độ)",
     tagDetection: "Nhãn (G54/Bao)",
     tagGrid: "Lưới",
     tagAxes: "Trục (+X/+Y)",
-    previewFit: "🎯 Vừa khung",
+    previewFit: "Vừa khung",
     previewDefaultText: "Chọn ảnh bản vẽ hoặc file DXF để xem trước (Cuộn: Zoom | Kéo: Pan | Nhấp đúp: Vừa khung)",
     previewEmpty: "Chưa có ảnh hoặc file DXF để xem trước",
     calibTag: "Chuẩn 10x10mm",
     g54Origin: "Gốc G54 (0,0)",
 
     // Panel 2: Simulation
-    simTitle: "2. 🎬 Mô phỏng đường chạy dao (Màn hình CAD/CAM)",
+    simTitle: "2. Mô phỏng đường chạy dao (Màn hình CAD/CAM)",
     simGrid: "Lưới & Trục",
     simRapids: "Chạy dao nhanh (G00)",
     simArrows: "Mũi tên hướng cắt",
     simCutter: "Đầu dao (Ø)",
-    simPlay: "▶️ Phát",
-    simPause: "⏸️ Tạm dừng",
-    simRestart: "🔄 Bắt đầu lại",
+    simPlay: "Phát",
+    simPause: "Tạm dừng",
+    simRestart: "Bắt đầu lại",
     simRecenter: "Căn giữa",
     simSpeed: "Tốc độ:",
     simDefaultText: "Chưa có đường chạy dao. Bấm 'Tạo mã G-Code' để bắt đầu mô phỏng.",
     simLoading: "Đang tải mô phỏng đường dao...",
 
     // Modal
-    modalTitle: "📄 Mã G-Code Fanuc CNC xuất ra",
+    modalTitle: "Mã G-Code Fanuc CNC xuất ra",
     btnCopy: "Sao chép mã",
-    btnClose: "✕ Đóng",
+    btnClose: "Đóng",
 
     // Move types
     moveIdle: "Chờ",
@@ -96,7 +96,7 @@ export const translations = {
     apiDocs: "API Docs",
 
     // Section 1: Upload
-    sec1Title: "1. 📁 Input Drawing or DXF",
+    sec1Title: "1. Input Drawing or DXF",
     dropPrompt: "Drag & drop drawing or DXF file here",
     dropOrBrowse: "or browse file from computer",
     dropFormats: "Supports PNG, JPG, BMP, TIFF, DXF",
@@ -104,14 +104,14 @@ export const translations = {
     noFileSelected: "No file chosen",
 
     // Section 2: Calibration
-    sec2Title: "2. 📐 Calibration & Scale",
+    sec2Title: "2. Calibration & Scale",
     stripDimensions: "Strip dimension annotations / text",
     refWidth: "Reference width (mm)",
     refHeight: "Reference height (mm)",
     pixelsPerMm: "Pixels per mm (px/mm)",
 
     // Section 3: Machining & Tool
-    sec3Title: "3. ⚙️ Machining & Tool",
+    sec3Title: "3. Machining & Tool",
     cutDepth: "Cut depth Z (mm)",
     plungeFeed: "Plunge feed (mm/min)",
     cutFeed: "Cut feed (mm/min)",
@@ -125,40 +125,40 @@ export const translations = {
 
     // Action buttons
     btnGenerate: "Generate G-Code",
-    btnReset: "🔄 Reset defaults",
-    btnDownloadNc: "📥 Download .NC",
-    btnDownloadDxf: "💾 Download .DXF",
-    btnViewGcode: "📄 View G-code",
+    btnReset: "Reset defaults",
+    btnDownloadNc: "Download .NC",
+    btnDownloadDxf: "Download .DXF",
+    btnViewGcode: "View G-Code",
 
     // Panel 1: Preview
-    previewTitle: "1. 🖼️ Image & DXF Preview (Source Drawing & Analysis)",
+    previewTitle: "1. Image & DXF Preview (Source Drawing & Analysis)",
     tagDetection: "Tags (G54/Env)",
     tagGrid: "Grid",
     tagAxes: "Axes (+X/+Y)",
-    previewFit: "🎯 Fit",
+    previewFit: "Fit",
     previewDefaultText: "Select an image or DXF to preview (Scroll: Zoom | Drag: Pan | Dbl-click: Fit)",
     previewEmpty: "No image or DXF preview available",
     calibTag: "10x10 mm Calib",
     g54Origin: "G54 (0,0)",
 
     // Panel 2: Simulation
-    simTitle: "2. 🎬 Toolpath Simulation (Clean CAD/CAM View)",
+    simTitle: "2. Toolpath Simulation (Clean CAD/CAM View)",
     simGrid: "Grid & Axes",
     simRapids: "Rapids (G00)",
     simArrows: "Direction Arrows",
     simCutter: "Cutter (Ø)",
-    simPlay: "▶️ Play",
-    simPause: "⏸️ Pause",
-    simRestart: "🔄 Restart",
-    simRecenter: "Fit View",
+    simPlay: "Play",
+    simPause: "Pause",
+    simRestart: "Restart",
+    simRecenter: "Recenter",
     simSpeed: "Speed:",
     simDefaultText: "No toolpath generated yet. Click 'Generate G-Code' to simulate.",
     simLoading: "Loading toolpath simulation...",
 
     // Modal
-    modalTitle: "📄 Fanuc CNC G-Code Output",
-    btnCopy: "Copy to Clipboard",
-    btnClose: "✕ Close",
+    modalTitle: "Generated Fanuc G-Code",
+    btnCopy: "Copy Code",
+    btnClose: "Close",
 
     // Move types
     moveIdle: "Idle",
@@ -195,7 +195,11 @@ export function renderAllIcons() {
     'upload-cloud': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-upload-cloud"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>',
     'ruler': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ruler"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg>',
     'settings-2': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings-2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>',
+    'image': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
+    'activity': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-activity"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.48 12H2"/></svg>',
     'play': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-play"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
+    'pause': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
+    'rotate-ccw': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>',
     'maximize': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-maximize"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
     'code': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
     'download': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>',
@@ -239,6 +243,9 @@ class I18nManager {
       localStorage.setItem('preferred_lang', lang);
     }
     this.updateDOM();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('languageChanged', { detail: { lang: this.currentLang } }));
+    }
   }
 
   toggle() {
@@ -255,6 +262,7 @@ class I18nManager {
   updateDOM() {
     if (typeof document === 'undefined') return;
     document.documentElement.lang = this.currentLang;
+
     const elements = document.querySelectorAll('[data-i18n]');
     elements.forEach((el) => {
       const key = el.getAttribute('data-i18n');
@@ -289,3 +297,23 @@ class I18nManager {
 }
 
 export const i18n = new I18nManager();
+
+// Automatically wire language toggle button as soon as DOM is ready
+export function bindLangToggle() {
+  const btn = document.getElementById('btn-lang-toggle');
+  if (btn && !btn._hasLangListener) {
+    btn._hasLangListener = true;
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      i18n.toggle();
+    });
+  }
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindLangToggle);
+  } else {
+    bindLangToggle();
+  }
+}
