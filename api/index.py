@@ -246,6 +246,8 @@ async def convert_image(
     tool_diameter: float = Form(default=3.0, description="Cutter diameter Ø (mm)"),
     tool_number: int = Form(default=1, description="Tool number"),
     tool_offset: int = Form(default=1, description="Tool length offset H"),
+    cutter_offset_d: int = Form(default=1, description="Cutter radius offset D"),
+    cutter_comp: str = Form(default="CAM", description="Cutter radius compensation (CAM, G40, G41, G42)"),
     program_number: int = Form(default=1000, description="Program number O"),
     strip_dimensions: bool = Form(default=False, description="Remove dimension lines"),
     reference_width_mm: Optional[float] = Form(default=None, description="Known width in mm"),
@@ -266,8 +268,11 @@ async def convert_image(
             spindle_speed=spindle_speed,
             safe_z=safe_z,
             approach_z=approach_z,
+            tool_diameter=tool_diameter,
             tool_number=tool_number,
             tool_offset=tool_offset,
+            cutter_offset_d=cutter_offset_d,
+            cutter_comp=cutter_comp,
             program_number=program_number,
         )
         validate_config(config)

@@ -178,7 +178,7 @@ class TestApiEndpoints(unittest.TestCase):
             self.assertEqual(resp_convert.status_code, 200)
             data_convert = resp_convert.json()
             self.assertTrue(data_convert["success"])
-            self.assertIn("G02", data_convert["gcode"])
+            self.assertTrue("G02" in data_convert["gcode"] or "G03" in data_convert["gcode"])
             self.assertIn("G01", data_convert["gcode"])
             self.assertGreater(len(data_convert["segments"]), 0)
             self.assertEqual(data_convert["filename_base"], "test_part")
@@ -188,6 +188,43 @@ class TestApiEndpoints(unittest.TestCase):
                 Path(tmp.name).unlink()
             except OSError:
                 pass
+
+    def test_api_cutter_radius_compensation(self) -> None:
+        client = TestClient(app)
+        img_bytes = SAMPLE_PLATE.read_bytes()
+        
+        # Test G41 with offset D2
+        resp_g41 = client.post(
+            "/api/convert",
+            files={"image": ("test.png", img_bytes, "image/png")},
+            data={"cutter_comp": "G41", "cutter_offset_d": "2"},
+        )
+        self.assertEqual(resp_g41.status_code, 200)
+        gcode_g41 = resp_g41.json()["gcode"]
+        self.assertIn("G41 D2", gcode_g41)
+        self.assertIn("G40", gcode_g41)
+
+        # Test G42 with offset D3
+        resp_g42 = client.post(
+            "/api/convert",
+            files={"image": ("test.png", img_bytes, "image/png")},
+            data={"cutter_comp": "G42", "cutter_offset_d": "3"},
+        )
+        self.assertEqual(resp_g42.status_code, 200)
+        gcode_g42 = resp_g42.json()["gcode"]
+        self.assertIn("G42 D3", gcode_g42)
+        self.assertIn("G40", gcode_g42)
+
+        # Test G40 (no comp)
+        resp_g40 = client.post(
+            "/api/convert",
+            files={"image": ("test.png", img_bytes, "image/png")},
+            data={"cutter_comp": "G40"},
+        )
+        self.assertEqual(resp_g40.status_code, 200)
+        gcode_g40 = resp_g40.json()["gcode"]
+        self.assertNotIn("G41", gcode_g40)
+        self.assertNotIn("G42", gcode_g40)
 
 
 if __name__ == "__main__":

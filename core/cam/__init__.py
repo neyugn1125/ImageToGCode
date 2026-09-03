@@ -6,7 +6,9 @@ from core.cam.correlation import (
 from core.cam.geometry import (
     circle_geometry_mm,
     contour_arc_command,
+    ensure_contour_winding,
     machining_origin,
+    offset_polygon,
     transform_contour,
 )
 from core.cam.sequencing import (
@@ -20,7 +22,9 @@ __all__ = [
     "circle_geometry_mm",
     "contour_arc_command",
     "contour_depth",
+    "ensure_contour_winding",
     "machining_origin",
+    "offset_polygon",
     "order_contours_child_first",
     "transform_contour",
 ]

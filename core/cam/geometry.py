@@ -119,3 +119,105 @@ def contour_arc_command(points: np.ndarray) -> str:
         x_values * np.roll(y_values, -1) - np.roll(x_values, -1) * y_values
     )
     return "G03" if signed_double_area >= 0 else "G02"
+
+
+def signed_polygon_area(points: Sequence[tuple[float, float]] | np.ndarray) -> float:
+    """Calculate signed polygon area in Cartesian coordinates (positive = CCW, negative = CW)."""
+    pts = np.asarray(points, dtype=np.float64)
+    if len(pts) < 3:
+        return 0.0
+    x = pts[:, 0]
+    y = pts[:, 1]
+    return 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
+
+
+def ensure_contour_winding(
+    points: Sequence[tuple[float, float]] | np.ndarray,
+    is_inner: bool,
+    comp_mode: str,
+) -> list[tuple[float, float]]:
+    """Ensure traversal direction keeps cutter on the correct side for G41/G42.
+
+    - For G41 (Climb milling):
+        * Outer boundary: cutter must stay OUTSIDE the part -> Clockwise (CW, area < 0)
+        * Inner hole: cutter must stay INSIDE the hole -> Counter-Clockwise (CCW, area > 0)
+    - For G42 (Conventional milling):
+        * Outer boundary: cutter must stay OUTSIDE the part -> Counter-Clockwise (CCW, area > 0)
+        * Inner hole: cutter must stay INSIDE the hole -> Clockwise (CW, area < 0)
+    - For G40 (No compensation):
+        * Preserve existing vertex order as-is.
+    """
+    pts = [(float(x), float(y)) for x, y in points]
+    norm_comp = comp_mode.upper() if comp_mode else "G40"
+    if norm_comp not in ("G41", "G42") or len(pts) < 3:
+        return pts
+
+    area = signed_polygon_area(pts)
+    is_ccw = area > 0
+
+    if norm_comp == "G41":
+        desired_ccw = True if is_inner else False
+    else:  # G42
+        desired_ccw = False if is_inner else True
+
+    if is_ccw != desired_ccw:
+        pts = pts[::-1]
+
+    return pts
+
+
+def offset_polygon(
+    points: Sequence[tuple[float, float]] | np.ndarray,
+    offset_dist: float,
+) -> list[tuple[float, float]]:
+    """Offset a 2D closed polygon by offset_dist along its edge normals.
+
+    Positive offset_dist expands outward, negative shrinks inward.
+    Uses miter intersection with miter limit to prevent spikes on acute corners.
+    """
+    pts = np.asarray(points, dtype=np.float64)
+    n_pts = len(pts)
+    if n_pts < 3 or abs(offset_dist) < 1e-6:
+        return [(float(x), float(y)) for x, y in pts]
+
+    area = signed_polygon_area(pts)
+    edges = np.roll(pts, -1, axis=0) - pts
+    lengths = np.linalg.norm(edges, axis=1, keepdims=True)
+    lengths = np.where(lengths < 1e-9, 1.0, lengths)
+    u = edges / lengths
+
+    # Outward normal: for CCW (area > 0) is (u_y, -u_x), for CW (area < 0) is (-u_y, u_x)
+    if area > 0:
+        normals = np.column_stack([u[:, 1], -u[:, 0]])
+    else:
+        normals = np.column_stack([-u[:, 1], u[:, 0]])
+
+    new_pts: list[tuple[float, float]] = []
+    miter_limit = 2.5 * abs(offset_dist)
+
+    for i in range(n_pts):
+        prev = (i - 1 + n_pts) % n_pts
+        n1 = normals[prev]
+        p1 = pts[prev] + offset_dist * n1
+        v1 = u[prev]
+
+        n2 = normals[i]
+        p2 = pts[i] + offset_dist * n2
+        v2 = u[i]
+
+        denom = v1[0] * v2[1] - v1[1] * v2[0]
+        if abs(denom) < 1e-4:
+            new_pt = pts[i] + offset_dist * normals[i]
+        else:
+            dp = p2 - p1
+            t = (dp[0] * v2[1] - dp[1] * v2[0]) / denom
+            candidate = p1 + t * v1
+            if np.linalg.norm(candidate - pts[i]) > miter_limit:
+                new_pt = pts[i] + offset_dist * normals[i]
+            else:
+                new_pt = candidate
+
+        new_pts.append((float(new_pt[0]), float(new_pt[1])))
+
+    return new_pts
+

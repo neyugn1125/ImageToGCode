@@ -465,6 +465,61 @@ class ImageToGcodeTests(unittest.TestCase):
         self.assertIn("G01 X0.000 Y5.000 F250.000 (Close contour)", gcode)
         self.assertTrue(gcode.endswith("M30 (End of program)\n"))
 
+    def test_cutter_radius_compensation_g41_g42(self) -> None:
+        contour = np.array([[[10, 20]], [[20, 20]], [[20, 30]]], dtype=np.int32)
+        config_g41 = MachiningConfig(
+            tool_number=2,
+            tool_offset=2,
+            cutter_offset_d=2,
+            cutter_comp="G41",
+            cut_depth=-3.0,
+        )
+        gcode_g41 = generate_gcode([contour], [0], 1.0, 10.0, 30.0, config_g41)
+        self.assertIn("G01 G41 D2 ", gcode_g41)
+        self.assertIn("G01 G40 ", gcode_g41)
+
+        config_g42 = MachiningConfig(
+            tool_number=5,
+            tool_offset=5,
+            cutter_offset_d=5,
+            cutter_comp="G42",
+            cut_depth=-3.0,
+        )
+        gcode_g42 = generate_gcode([contour], [0], 1.0, 10.0, 30.0, config_g42)
+        self.assertIn("G01 G42 D5 ", gcode_g42)
+        self.assertIn("G01 G40 ", gcode_g42)
+
+    def test_cutter_compensation_cam_mode(self) -> None:
+        from core.cam.geometry import offset_polygon
+        # Test square 0..100 offset outward by 1.5mm
+        square = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+        offset_sq = offset_polygon(square, 1.5)
+        self.assertEqual(len(offset_sq), 4)
+        self.assertAlmostEqual(offset_sq[0][0], -1.5, places=2)
+        self.assertAlmostEqual(offset_sq[0][1], -1.5, places=2)
+        self.assertAlmostEqual(offset_sq[2][0], 101.5, places=2)
+        self.assertAlmostEqual(offset_sq[2][1], 101.5, places=2)
+
+        # Test diamond pocket offset inward by 1.5mm
+        diamond = [(50.0, 20.0), (80.0, 50.0), (50.0, 80.0), (20.0, 50.0)]
+        offset_dia = offset_polygon(diamond, -1.5)
+        self.assertEqual(len(offset_dia), 4)
+        self.assertAlmostEqual(offset_dia[0][0], 50.0, places=2)
+        self.assertAlmostEqual(offset_dia[0][1], 22.12, places=1)
+
+        # Test CAM mode G-code generation: no G41/G42, tool centerline offset directly
+        contour = np.array([[[10, 20]], [[20, 20]], [[20, 30]], [[10, 30]]], dtype=np.int32)
+        config_cam = MachiningConfig(
+            tool_diameter=3.0,
+            cutter_comp="CAM",
+            cut_depth=-3.0,
+        )
+        gcode_cam = generate_gcode([contour], [0], 1.0, 10.0, 30.0, config_cam)
+        self.assertNotIn("G41", gcode_cam)
+        self.assertNotIn("G42", gcode_cam)
+        # Should be expanded outward by 1.5mm
+        self.assertIn("G01", gcode_cam)
+
     def test_end_to_end_smoke_test(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             image_path = Path(directory) / "drawing.png"

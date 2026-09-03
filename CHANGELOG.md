@@ -7,6 +7,29 @@ trên [Keep a Changelog](https://keepachangelog.com/vi-VN/1.1.0/).
 
 ### Thêm mới
 
+- Bổ sung cơ chế **Bù bán kính dao (Cutter Radius Compensation)** đa năng:
+  - **CAM tự bù (Computer Compensation - `CAM`)**: Tự động tính toán quỹ đạo tâm dao bù trực tiếp kích thước theo đường kính dao (`--tool-diameter`). Biên dạng ngoài được mở rộng $+R_{dao}$, hốc kín bên trong co ngót $-R_{dao}$. Lỗ tròn hạ dao an toàn tại tâm và phay tròn $R_{cut} = R - R_{dao}$.
+  - **Bù dao Controller (`G41` / `G42`)**: Xuất mã G41 (bù trái) hoặc G42 (bù phải) kèm D-code (`--cutter-offset-d`), có đoạn vào dao/ra dao (lead-in/lead-out) an toàn trong không khí tự do.
+  - **Tắt bù (`G40`)**: Chạy dao trực tiếp theo đường danh nghĩa của bản vẽ.
+- Thuật toán **Xâu chuỗi thực thể DXF tự động (`DXF Entity Chaining`)**:
+  - Tự động dò tìm và ghép nối các thực thể `LINE`, `ARC`, `LWPOLYLINE` rời rạc có đầu mút tiếp giáp thành các chuỗi biên dạng kín hoàn chỉnh (`DxfChain`).
+  - Loại bỏ hoàn toàn hiện tượng rãnh then (slot) hoặc góc bo bị cắt vụn với nhiều lần lao/rút dao ngắt quãng.
+- Thuật toán **Bù dao giải tích bảo toàn cung tròn (`Analytic Arc Offset`)**:
+  - Giải tích hình học giao điểm tiếp tuyến giữa đường thẳng bù và cung tròn bù.
+  - Bảo toàn 100% các lệnh nội suy tròn **`G02` / `G03`** chuẩn Fanuc, tuyệt đối không băm nhỏ cung tròn thành các đoạn thẳng `G01`.
+- Hỗ trợ ứng dụng Web hiện đại chạy bằng FastAPI (`api/index.py`) với giao diện trực quan, mô phỏng đường chạy dao trên Canvas 2D thời gian thực, hỗ trợ kéo thả file và đa ngôn ngữ (Tiếng Việt / English).
+- Bổ sung các tham số `--tool-diameter`, `--cutter-comp`, `--cutter-offset-d` trên CLI, GUI Tkinter Desktop (`app.py`) và Web App.
+
+### Thay đổi
+
+- Tái cấu trúc codebase sang kiến trúc mô-đun chuẩn mực trong thư mục `core/`:
+  - `core/cam/`: Hình học CAM, bù polygon, pháp tuyến và winding.
+  - `core/dxf/`: Đọc, kiểm tra tính hợp lệ và trích xuất thực thể DXF.
+  - `core/post/`: Fanuc post-processor, chaining thực thể, bộ phân tích cú pháp mô phỏng G-code.
+  - `core/vision/`: Xử lý ảnh, trích xuất contour, làm mượt và hiệu chuẩn scale.
+- Cải tiến thuật toán phân loại cha/con (`_classify_contours` và `_classify_dxf_entities`):
+  - Kết hợp kiểm tra diện tích đa giác với kiểm tra toàn bộ đỉnh nằm trong đường bao, khắc phục lỗi nhận nhầm do trọng tâm lệch của các hình bất đối xứng.
+- Tự động sắp xếp thứ tự gia công thông minh: phay toàn bộ các lỗ và hốc bên trong trước, phay biên dạng ngoài bao quanh sau cùng.
 - Hỗ trợ scale ảnh không có metadata bằng `--reference-width-mm`,
   `--reference-height-mm` hoặc `--pixels-per-mm`; nếu không có nguồn scale,
   pipeline dừng trước khi tạo G-code.
@@ -25,39 +48,13 @@ trên [Keep a Changelog](https://keepachangelog.com/vi-VN/1.1.0/).
 - Hỗ trợ ô chuẩn rỗng theo quy tắc góc dưới-trái và bù độ dày nét bằng trung
   bình độ rộng contour ngoài/trong.
 
-### Thay đổi
+### Sửa lỗi
 
-- Ưu tiên scale tường minh trước metadata diagrams.net và ô vuông hiệu chuẩn;
-  khi có cả hai kích thước tham chiếu, kiểm tra sai lệch tỉ lệ tối đa 5%.
-- Lọc residue, nét dài mảnh và thành phần chú thích bên ngoài contour bao khi
-  bật `--strip-dimensions`, đồng thời giữ hierarchy lỗ/vật liệu của chi tiết.
-- Làm mượt contour mạnh hơn để loại bậc pixel trên cạnh chéo, đồng thời giữ
-  nguyên contour của ô vuông hiệu chuẩn 10 x 10 mm. Giới hạn sai số làm mượt
-  contour cong dài ở 1 pixel để ellipse và đầu bo không bị phân thành các
-  đoạn thẳng thô theo chu vi.
-- Contour tròn được xuất theo chiều winding bằng `G02` hoặc `G03`, thay vì
-  luôn dùng `G02`.
-- Cải thiện xử lý contour của bản vẽ dạng nét: loại vòng biên dư, dựng lại
-  hierarchy sau khi lọc và giữ đúng thứ tự gia công contour con trước contour
-  cha.
-- GUI tải dữ liệu mô phỏng ở luồng nền và hiển thị các đỉnh đường chạy dao
-  với đầu mút phẳng, giúp không làm treo giao diện và giữ góc sắc.
-- Quá trình ghi G-code trên GUI dùng tệp tạm rồi thay thế nguyên tử; thư mục
-  output được tạo tự động và tệp tạm được dọn khi có lỗi.
-- Tham số mặc định của CLI lấy trực tiếp từ `MachiningConfig`; dependency
-  NumPy và OpenCV được giới hạn major version tương thích.
-- Script đóng gói Windows dừng ngay khi một bước cài đặt hoặc build thất bại.
-- Post-processor DXF xuất mỗi `CIRCLE` bằng hai cung 180 độ `G02` với I/J tương
-  đối, và đóng nghiêm ngặt mọi `LWPOLYLINE` bằng một lệnh `G01` về điểm đầu.
-
-### Kiểm thử
-
-- Bổ sung kiểm thử cho làm mượt contour tam giác raster, cung tròn thuận/nghịch
-  chiều, xử lý hierarchy sau khi loại vòng biên và kiểm tra scale factor bằng
-  không, gần không hoặc không hữu hạn.
-- Bổ sung kiểm thử phân biệt ô chuẩn đen đặc và hình vuông chỉ vẽ biên.
-- Bổ sung kiểm thử xuất/đọc DXF, direct DXF input, thư mục output duy nhất, hai
-  cung tròn và đóng kín polyline.
+- Khắc phục lỗi rãnh then (slot) trong file DXF bị tự động đóng một đường thẳng ngang đầu và cung tròn bị cắt riêng đè ra ngoài.
+- Khắc phục lỗi biến cung tròn thành nhiều đoạn thẳng nhỏ `G01` khi bật chế độ bù dao CAM.
+- Khắc phục lỗi `AttributeError: 'ImageToGCodeApp' object has no attribute 'tool_diameter_var'` gây crash giao diện Tkinter `app.py`.
+- Khắc phục lỗi giá trị gửi lên từ dropdown bù dao trên Web UI khiến chương trình chạy ở chế độ tắt bù danh nghĩa.
+- Khắc phục lỗi lẹm dao và vết khuyết cạnh huyền khi vào dao bằng cách chuyển sang chế độ bù CAM trực tiếp hoặc lead-in trong không khí tự do.
 
 ## [Release] - 2026-08-18
 

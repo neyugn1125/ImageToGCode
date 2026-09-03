@@ -23,9 +23,12 @@ class MachiningConfig:
     spindle_speed: int = 1500
     safe_z: float = 50.0
     approach_z: float = 2.0
+    tool_diameter: float = 3.0
     tool_number: int = 1
-    tool_offset: int = 1
-    program_number: int = 1000
+    tool_offset: int = 1         # Tool length offset register H (G43 H1)
+    cutter_offset_d: int = 1     # Cutter radius offset register D (G41/G42 D1)
+    cutter_comp: str = "G40"     # Cutter compensation: "CAM" (Auto CAM offset), "G40" (Off), "G41" (Left), "G42" (Right)
+    program_number: int = 1000   # Fanuc program number O1000
 
 
 @dataclass(frozen=True)
@@ -48,8 +51,11 @@ def config_from_args(args: argparse.Namespace) -> MachiningConfig:
         spindle_speed=args.spindle_speed,
         safe_z=args.safe_z,
         approach_z=args.approach_z,
+        tool_diameter=getattr(args, "tool_diameter", 3.0),
         tool_number=args.tool_number,
         tool_offset=args.tool_offset,
+        cutter_offset_d=getattr(args, "cutter_offset_d", 1),
+        cutter_comp=getattr(args, "cutter_comp", "G40"),
         program_number=args.program_number,
     )
     validate_config(config)
@@ -64,6 +70,7 @@ def validate_config(config: MachiningConfig) -> None:
         ("cut_feed", config.cut_feed),
         ("safe_z", config.safe_z),
         ("approach_z", config.approach_z),
+        ("tool_diameter", config.tool_diameter),
     )
     for name, value in float_fields:
         if not math.isfinite(value):
@@ -83,10 +90,19 @@ def validate_config(config: MachiningConfig) -> None:
         raise ValueError(f"cut_feed ({config.cut_feed}) must be positive")
     if config.spindle_speed <= 0:
         raise ValueError(f"spindle_speed ({config.spindle_speed}) must be positive")
+    if config.tool_diameter <= 0:
+        raise ValueError(f"tool_diameter ({config.tool_diameter}) must be positive")
     if config.tool_number < 1:
         raise ValueError(f"tool_number ({config.tool_number}) must be >= 1")
     if config.tool_offset < 1:
         raise ValueError(f"tool_offset ({config.tool_offset}) must be >= 1")
+    if config.cutter_offset_d < 1:
+        raise ValueError(f"cutter_offset_d ({config.cutter_offset_d}) must be >= 1")
+    norm_comp = config.cutter_comp.upper() if config.cutter_comp else "CAM"
+    if norm_comp not in ("CAM", "G40", "G41", "G42", "NONE"):
+        raise ValueError(
+            f"cutter_comp ({config.cutter_comp}) must be 'CAM', 'G40', 'G41', or 'G42'"
+        )
     if not (1 <= config.program_number <= 9999):
         raise ValueError(
             f"program_number ({config.program_number}) must be between 1 and 9999"

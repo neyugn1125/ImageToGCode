@@ -248,9 +248,11 @@ class ImageToGCodeApp(ttk.Frame):
         self.spindle_speed_var = tk.StringVar(value="1500")
         self.safe_z_var = tk.StringVar(value="50.0")
         self.approach_z_var = tk.StringVar(value="2.0")
+        self.tool_diameter_var = tk.StringVar(value="3.0")
         self.tool_number_var = tk.StringVar(value="1")
         self.tool_offset_var = tk.StringVar(value="1")
-        self.tool_diameter_var = tk.StringVar(value="3.0")
+        self.cutter_offset_d_var = tk.StringVar(value="1")
+        self.cutter_comp_var = tk.StringVar(value="CAM")
         self.program_number_var = tk.StringVar(value="1000")
         self.strip_dimensions_var = tk.BooleanVar(value=False)
         self.reference_width_var = tk.StringVar(value="")
@@ -409,18 +411,30 @@ class ImageToGCodeApp(ttk.Frame):
             ("Safe Z (mm)", self.safe_z_var),
             ("Approach Z (mm)", self.approach_z_var),
             ("Tool diameter Ø (mm)", self.tool_diameter_var),
-            ("Tool number", self.tool_number_var),
-            ("Tool offset H", self.tool_offset_var),
-            ("Program number O", self.program_number_var),
+            ("Tool number (T)", self.tool_number_var),
+            ("Tool length offset (H)", self.tool_offset_var),
+            ("Cutter radius offset (D)", self.cutter_offset_d_var),
+            ("Cutter compensation", self.cutter_comp_var),
+            ("Program number (O)", self.program_number_var),
         ]
         for index, (label, variable) in enumerate(fields):
             cell = ttk.Frame(settings, style="TFrame")
             cell.grid(row=index, column=0, sticky="ew", pady=1)
             cell.columnconfigure(1, weight=1)
             ttk.Label(cell, text=label).grid(row=0, column=0, sticky="w")
-            ttk.Entry(cell, textvariable=variable, width=11).grid(
-                row=0, column=1, sticky="e"
-            )
+            if variable is self.cutter_comp_var:
+                combobox = ttk.Combobox(
+                    cell,
+                    textvariable=variable,
+                    values=["CAM", "G41", "G42", "G40"],
+                    state="readonly",
+                    width=9,
+                )
+                combobox.grid(row=0, column=1, sticky="e")
+            else:
+                ttk.Entry(cell, textvariable=variable, width=11).grid(
+                    row=0, column=1, sticky="e"
+                )
 
         button_row = ttk.Frame(left_column, style="TFrame")
         button_row.grid(row=1, column=0, sticky="sew", pady=(8, 0))
@@ -431,6 +445,13 @@ class ImageToGCodeApp(ttk.Frame):
             command=self._start_conversion,
         )
         self.generate_button.pack(fill="x")
+        self.copy_gcode_button = ttk.Button(
+            button_row,
+            text="Copy G-Code",
+            command=self._copy_gcode_to_clipboard,
+            state="disabled",
+        )
+        self.copy_gcode_button.pack(fill="x", pady=(5, 0))
         self.reset_button = ttk.Button(
             button_row, text="Reset defaults", command=self._reset_defaults
         )
@@ -1737,6 +1758,22 @@ class ImageToGCodeApp(ttk.Frame):
             except ValueError as error:
                 raise ValueError(f"{label} must be a valid integer.") from error
 
+        cutter_d = 1
+        if hasattr(self, "cutter_offset_d_var"):
+            try:
+                cutter_d = int(self.cutter_offset_d_var.get().strip())
+            except ValueError:
+                cutter_d = 1
+        raw_comp = self.cutter_comp_var.get().strip().upper() if hasattr(self, "cutter_comp_var") else "CAM"
+        if "G41" in raw_comp:
+            cutter_comp = "G41"
+        elif "G42" in raw_comp:
+            cutter_comp = "G42"
+        elif "G40" in raw_comp or "NONE" in raw_comp or "OFF" in raw_comp:
+            cutter_comp = "G40"
+        else:
+            cutter_comp = "CAM"
+
         config = MachiningConfig(
             cut_depth=read_float(self.cut_depth_var, "Cut depth"),
             plunge_feed=read_float(self.plunge_feed_var, "Plunge feed"),
@@ -1744,8 +1781,11 @@ class ImageToGCodeApp(ttk.Frame):
             spindle_speed=read_int(self.spindle_speed_var, "Spindle speed"),
             safe_z=read_float(self.safe_z_var, "Safe Z"),
             approach_z=read_float(self.approach_z_var, "Approach Z"),
+            tool_diameter=self._get_tool_diameter(),
             tool_number=read_int(self.tool_number_var, "Tool number"),
             tool_offset=read_int(self.tool_offset_var, "Tool offset"),
+            cutter_offset_d=cutter_d,
+            cutter_comp=cutter_comp,
             program_number=read_int(self.program_number_var, "Program number"),
         )
         validate_config(config)
@@ -1870,6 +1910,8 @@ class ImageToGCodeApp(ttk.Frame):
             self._append_log(f"Unable to load toolpath simulation: {payload}")
         else:
             scale_factor, contour_count, output_path = payload  # type: ignore[misc]
+            self._last_generated_nc_path = output_path
+            self.copy_gcode_button.configure(state="normal")
             self.status_var.set("G-code generated successfully")
             self.status_label.configure(style="Success.Status.TLabel")
             self._append_log(
@@ -1878,6 +1920,25 @@ class ImageToGCodeApp(ttk.Frame):
             )
             self._load_toolpath(output_path)
         self.root.after(100, self._poll_results)
+
+    def _copy_gcode_to_clipboard(self) -> None:
+        target_path: Path | None = getattr(self, "_last_generated_nc_path", None)
+        if target_path is None or not target_path.is_file():
+            output_val = Path(self.output_var.get().strip()).expanduser()
+            if output_val.is_file():
+                target_path = output_val
+            else:
+                self._show_error("No generated G-code file found to copy.")
+                return
+        try:
+            content = target_path.read_text(encoding="utf-8")
+            self.root.clipboard_clear()
+            self.root.clipboard_append(content)
+            self.status_var.set("G-code copied to clipboard!")
+            self.status_label.configure(style="Success.Status.TLabel")
+            self._append_log(f"Copied G-code from {target_path.name} to clipboard.")
+        except Exception as err:
+            self._show_error(f"Failed to copy G-code: {err}")
 
     def _load_toolpath(self, output_path: Path) -> None:
         self.sim_info_var.set("Loading toolpath simulation...")
@@ -1924,6 +1985,7 @@ class ImageToGCodeApp(ttk.Frame):
             self.open_output_button,
             self.reset_button,
             self.generate_button,
+            self.copy_gcode_button,
         ):
             button.configure(state=state)
         if running:
@@ -1931,6 +1993,7 @@ class ImageToGCodeApp(ttk.Frame):
             self.status_label.configure(style="Status.TLabel")
 
     def _reset_defaults(self) -> None:
+        self.copy_gcode_button.configure(state="disabled")
         self.input_var.set(str(GUI_DEFAULT_INPUT_PATH))
         self.output_var.set(str(GUI_DEFAULT_OUTPUT_PATH))
         self.cut_depth_var.set("-5.0")
@@ -1942,8 +2005,9 @@ class ImageToGCodeApp(ttk.Frame):
         self.tool_diameter_var.set("3.0")
         self.tool_number_var.set("1")
         self.tool_offset_var.set("1")
+        self.cutter_offset_d_var.set("1")
+        self.cutter_comp_var.set("G40")
         self.program_number_var.set("1000")
-        self.strip_dimensions_var.set(False)
         self.reference_width_var.set("")
         self.reference_height_var.set("")
         self.pixels_per_mm_var.set("")

@@ -164,6 +164,19 @@
               <input type="number" id="tool-offset" value="1" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div class="flex items-center justify-between gap-2">
+              <label for="cutter-offset-d" class="text-slate-600" data-i18n="cutterOffsetD">Mã bù bán kính dao (D)</label>
+              <input type="number" id="cutter-offset-d" value="1" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <label for="cutter-comp" class="text-slate-600 font-semibold text-blue-700" data-i18n="cutterCompMode">Bù bán kính dao (Phương pháp bù)</label>
+              <select id="cutter-comp" class="w-36 text-xs px-1.5 py-1.5 border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-medium text-slate-700 cursor-pointer">
+                <option value="CAM" selected data-i18n="compCAM">CAM tự bù (Khuyên dùng)</option>
+                <option value="G41" data-i18n="compG41">G41 (Máy CNC tự bù - Trái)</option>
+                <option value="G42" data-i18n="compG42">G42 (Máy CNC tự bù - Phải)</option>
+                <option value="G40" data-i18n="compG40">G40 (Tắt bù - Chạy tâm nét vẽ)</option>
+              </select>
+            </div>
+            <div class="flex items-center justify-between gap-2">
               <label for="program-number" class="text-slate-600" data-i18n="programNum">Số thứ tự chương trình (O)</label>
               <input type="number" id="program-number" value="1000" class="w-24 text-right px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
@@ -333,10 +346,6 @@
           Định dạng xuất: Chương trình Fanuc CNC (.NC / ISO 6983) &amp; Bản vẽ 2D CAD (.DXF)
         </div>
         <div class="flex items-center gap-2">
-          <button id="btn-view-gcode" disabled type="button" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5 cursor-pointer">
-            <i data-lucide="code" class="w-4 h-4"></i>
-            <span data-i18n="btnViewGcode">Xem khối lệnh G-Code</span>
-          </button>
           <button id="btn-download-dxf" disabled type="button" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1.5 cursor-pointer">
             <i data-lucide="download" class="w-4 h-4"></i>
             <span data-i18n="btnDownloadDxf">Xuất file CAD (.DXF)</span>

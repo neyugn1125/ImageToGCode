@@ -1,37 +1,33 @@
 # Image/DXF to G-Code
 
 Công cụ chuyển ảnh raster 2D hoặc bản vẽ DXF thành G-code Fanuc cho phay biên
-dạng CNC. CLI dùng pipeline hai giai đoạn `Image -> DXF -> G-Code`; ứng dụng
-vẫn hỗ trợ giao diện GUI trên Windows cho luồng ảnh.
+dạng CNC. Hỗ trợ đầy đủ **bù bán kính dao (Cutter Radius Compensation)** qua
+thuật toán CAM hoặc mã G41/G42. Cung cấp cả giao diện Web (FastAPI), GUI Desktop
+(Tkinter trên Windows) và CLI.
 
-> **Cảnh báo:** Hãy mô phỏng hoặc dry-run chương trình trên controller trước khi chạy máy thật. Phần mềm chưa áp dụng bù bán kính dao, bù kerf, chia nhiều lớp chiều sâu hoặc kiểm tra va chạm.
+> **Khuyến nghị an toàn:** Hãy mô phỏng hoặc dry-run chương trình trên controller / phần mềm mô phỏng trước khi chạy phôi thật.
 
 ## Tính năng
 
-- Đọc ảnh PNG, JPG, JPEG, BMP, TIFF hoặc nhận trực tiếp file DXF.
-- Tự động phát hiện ô vuông chuẩn rỗng 10 x 10 mm theo quy tắc góc dưới trái
-  (`min(x - y)`). Ảnh cũ dùng ô chuẩn đen đặc vẫn được hỗ trợ.
-- Bù độ dày nét ô chuẩn theo
-  `true_width_px = (w_outer + w_inner) / 2.0`, sau đó tính
-  `SF = true_width_px / 10.0`.
-- Đặt gốc G54 tại góc dưới trái của bounding box chi tiết gia công.
-- Loại ô chuẩn khỏi bounding box và đường chạy dao.
-- Làm mượt contour bằng `cv2.approxPolyDP` với epsilon mặc định bằng `0.005 * perimeter` để loại bỏ bậc pixel trên cạnh chéo; với contour cong dài, epsilon được giới hạn ở 1 pixel để tránh tạo các đoạn thẳng thô. Contour ô chuẩn được giữ nguyên để không ảnh hưởng hiệu chuẩn.
-- Sắp xếp contour theo hierarchy, gia công contour con trước contour cha.
-- Nhận dạng hình tròn bằng circularity `> 0.88`.
-- Xuất DXF theo đơn vị millimeter với entity `CIRCLE` hoặc `LWPOLYLINE` đóng.
-- Sinh đúng hai cung 180 độ `G02` với I/J tương đối cho mỗi `CIRCLE`, tránh
-  lỗi nội suy full-circle trên controller.
-- Sinh `G01` theo từng đỉnh `LWPOLYLINE`, luôn thêm lệnh quay về điểm đầu và
-  retract sau mỗi đường chạy dao.
-- Tạo thư mục riêng cho mỗi lần chạy theo mẫu
-  `output/<filename>_<YYYYMMDD_HHMMSS>/`, chứa cả `.dxf` và `.nc`.
-- Kiểm tra tham số gia công trước khi xử lý.
-- Hỗ trợ scale tường minh cho ảnh không có metadata bằng kích thước tham chiếu
-  hoặc `pixels per mm`; không tự suy đoán DPI vì DPI không cho biết kích thước
-  chi tiết nếu ảnh đã bị resize.
-- Có thể loại nét kích thước, đường dóng, mũi tên và chữ bằng
-  `--strip-dimensions` trước khi lấy contour.
+- **Đa dạng nguồn đầu vào**: Đọc ảnh raster (PNG, JPG, JPEG, BMP, TIFF) hoặc nhận trực tiếp file vector DXF (`.dxf`).
+- **Bù bán kính dao tự động (Cutter Radius Compensation)**:
+  - **CAM tự bù (`CAM` - khuyên dùng)**: Tự động tính toán đường tâm dao trực tiếp theo đường kính dao (`--tool-diameter`). Biên dạng ngoài được mở rộng $+R_{dao}$, hốc kín bên trong co lại $-R_{dao}$, lỗ tròn hạ dao tại tâm và phay tròn $R_{cut} = R - R_{dao}$.
+  - **Bù máy Controller (`G41` / `G42`)**: Xuất lệnh bù trái (`G41`) hoặc bù phải (`G42`) kèm thanh ghi `D`, có đoạn vào dao / ra dao (lead-in / lead-out) an toàn trong không khí tự do.
+  - **Tắt bù (`G40`)**: Chạy dao trực tiếp theo đường danh nghĩa của bản vẽ.
+- **Xâu chuỗi thực thể DXF tự động (`DXF Entity Chaining`)**:
+  - Dò tìm và kết nối các thực thể `LINE`, `ARC`, `LWPOLYLINE` rời rạc có đầu mút tiếp giáp nhau thành các chuỗi biên dạng kín liên tục (`DxfChain`).
+  - Giữ nguyên vẹn các rãnh then (slots) và góc bo cung tròn, loại bỏ hiện tượng bị kẻ nét thẳng đóng ngang đầu rãnh hoặc nhấc dao nhiều lần ngắt quãng.
+- **Bù dao giải tích bảo toàn cung tròn (`Analytic Arc Offset`)**:
+  - Tính toán tiếp xúc hình học chính xác giữa đường thẳng bù và cung tròn bù.
+  - Bảo toàn 100% các lệnh nội suy tròn chuẩn Fanuc **`G02` / `G03`**, không băm nhỏ cung tròn thành các đoạn thẳng `G01`.
+- **Giao diện Web tương tác & Mô phỏng 2D**:
+  - Ứng dụng Web FastAPI (`api/index.py`), hỗ trợ xem trước bản vẽ, mô phỏng dao thời gian thực trên Canvas 2D, tùy chỉnh thông số và hỗ trợ đa ngôn ngữ (Tiếng Việt / English).
+- **Tự động phát hiện hiệu chuẩn**: Ô vuông chuẩn rỗng 10 x 10 mm theo quy tắc góc dưới trái (`min(x - y)`), bù độ dày nét bằng trung bình độ rộng contour ngoài/trong. Hỗ trợ ô chuẩn đen đặc cũ.
+- **Định vị gốc phôi G54**: Tự động đặt gốc G54 tại góc dưới trái của bounding box chi tiết gia công.
+- **Sắp xếp thứ tự gia công tối ưu**: Gia công toàn bộ các lỗ và hốc bên trong trước, phay biên dạng ngoài bao quanh sau cùng.
+- **Làm mượt contour thông minh**: Dùng `cv2.approxPolyDP` với epsilon thích ứng để khử bậc pixel trên cạnh chéo mà vẫn giữ sắc nét góc và đầu bo.
+- **Sinh G-code chuẩn Fanuc**: Đầy đủ header/footer, đổi dao, bù chiều dài dao `G43`, trục chính, tưới nguội, plunge feed, cut feed và an toàn Z.
+- **Quản lý Artifacts**: Tạo thư mục riêng cho mỗi lần chạy theo mẫu `output/<filename>_<YYYYMMDD_HHMMSS>/`, chứa cả `.dxf` và `.nc`.
 
 ## Pipeline xử lý
 
@@ -155,6 +151,9 @@ Các tham số CLI:
 | --- | ---: | --- |
 | `--input` | `input/input.png` | Ảnh hoặc DXF đầu vào |
 | `--output-dir` | `output` | Thư mục gốc chứa các thư mục lần chạy |
+| `--tool-diameter` | `3.0` | Đường kính dao phay (mm), dùng cho chế độ bù dao |
+| `--cutter-comp` | `CAM` | Chế độ bù bán kính dao: `CAM` (CAM tự bù), `G41` (bù trái), `G42` (bù phải), `G40` (tắt bù) |
+| `--cutter-offset-d` | `1` | Số hiệu thanh ghi bù dao D (khi chọn G41/G42) |
 | `--cut-depth` | `-5.0` | Chiều sâu cắt Z, phải âm |
 | `--plunge-feed` | `100.0` | Feed khi plunge, mm/min |
 | `--cut-feed` | `300.0` | Feed khi cắt, mm/min |
@@ -173,17 +172,32 @@ Các tham số CLI:
 từ ảnh và ghi artifact sang thư mục khác:
 
 ```bash
-python run.py --input drawings/part.png --output-dir nc --cut-depth -2.5 --cut-feed 250 --spindle-speed 2200
+python run.py --input drawings/part.png --output-dir nc --tool-diameter 3.0 --cutter-comp CAM --cut-depth -2.5 --cut-feed 250 --spindle-speed 2200
 ```
 
 Đầu vào DXF đi thẳng tới post-processor và bản gốc được sao chép vào thư mục
 lần chạy:
 
 ```bash
-python run.py --input drawings/part.dxf --output-dir output
+python run.py --input drawings/part.dxf --output-dir output --tool-diameter 3.0 --cutter-comp CAM
 ```
 
-## Chạy giao diện GUI
+## Chạy giao diện Web (FastAPI)
+
+Ứng dụng cung cấp giao diện Web hiện đại với khả năng mô phỏng dao 2D tương tác:
+
+```bash
+# Khởi động server Web
+uvicorn api.index:app --reload --port 8000
+```
+
+Mở trình duyệt tại địa chỉ `http://localhost:8000`:
+- Kéo thả file ảnh hoặc file DXF trực tiếp vào khung tải lên.
+- Tùy chỉnh thông số dao (`Tool diameter Ø`), tốc độ, bước tiến và chế độ bù dao (`CAM tự bù`, `G41`, `G42`, `G40`).
+- Quan sát đường chạy dao mô phỏng trực quan trên Canvas 2D thời gian thực.
+- Tải về file G-code (`.nc`) và DXF trung gian chỉ với 1 cú click.
+
+## Chạy giao diện Desktop GUI (Tkinter)
 
 ```bash
 python app.py
@@ -193,7 +207,7 @@ Trong cửa sổ ứng dụng:
 
 1. Nhấn **Browse** ở mục Input image và chọn ảnh trực tiếp.
 2. Chọn tên file G-code ở mục Output G-code.
-3. Nhập thông số dao và thông số gia công.
+3. Nhập thông số dao (`Tool diameter Ø`), chọn chế độ bù dao (`Cutter compensation`: `CAM`, `G41`, `G42`, `G40`) và thông số gia công.
 4. Nếu ảnh không có ô chuẩn hoặc metadata, nhập Reference width/height (mm)
    hoặc Pixels per mm trong panel **Scale reference**. Hai cách này không dùng
    đồng thời.
@@ -226,18 +240,32 @@ python -m unittest discover -s tests -v
 
 Bộ kiểm thử bao gồm hiệu chuẩn hollow/centerline, scale tường minh cho ảnh
 không metadata, bounding box G54, hierarchy child-first, xuất DXF, direct DXF
-input, hai cung `G02`, đóng polyline, header/footer và quản lý thư mục output.
+input, chaining thực thể DXF, bù dao giải tích, hai cung `G02`, đóng polyline,
+header/footer và quản lý thư mục output.
 
 ## Cấu trúc dự án
 
 ```text
 .
-├── app.py                  # Giao diện Tkinter
-├── run.py                  # Image -> DXF -> G-code, post-processor và CLI
+├── api/                    # Backend Web API (FastAPI)
+│   └── index.py            # Entrypoint API phục vụ Web App & Vercel
+├── core/                   # Các gói xử lý lõi (Core Processing Modules)
+│   ├── cam/                # Hình học CAM, offset đa giác, winding
+│   ├── dxf/                # Đọc DXF, trích xuất entity, validation
+│   ├── post/               # Fanuc post-processor, chaining, parser mô phỏng
+│   └── vision/             # Xử lý ảnh, contour, hiệu chuẩn scale
+├── public/                 # Tài nguyên Web tĩnh (CSS, JS đa ngôn ngữ, icons)
+│   ├── css/style.css
+│   └── js/app.js, i18n.js
+├── index.html              # Giao diện Web SPA
+├── app.py                  # Giao diện Tkinter Desktop
+├── run.py                  # CLI chuyển đổi Image -> DXF -> G-code
 ├── requirements.txt        # Dependency Python
 ├── build_windows.bat       # Đóng gói ImageToGCode.exe
-├── input/input.png         # Ảnh mẫu mặc định
-└── tests/
+├── input/                  # File ảnh và DXF mẫu đầu vào
+└── tests/                  # Bộ unit tests tự động
+    ├── test_api.py
+    ├── test_dxf_pipeline.py
     ├── test_image_to_gcode.py
-    └── test_dxf_pipeline.py
+    └── ...
 ```

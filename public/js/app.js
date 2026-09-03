@@ -37,11 +37,14 @@ class ImageToGCodeWebApp {
     this.toolDiaInput = document.getElementById('tool-dia');
     this.toolNumberInput = document.getElementById('tool-number');
     this.toolOffsetInput = document.getElementById('tool-offset');
+    this.cutterOffsetDInput = document.getElementById('cutter-offset-d');
+    this.cutterCompSelect = document.getElementById('cutter-comp');
     this.programNumberInput = document.getElementById('program-number');
 
     // Buttons
     this.generateBtn = document.getElementById('btn-generate');
     this.resetBtn = document.getElementById('btn-reset');
+    this.quickCopyGcodeBtn = document.getElementById('btn-quick-copy-gcode');
     this.downloadNcBtn = document.getElementById('btn-download-nc');
     this.downloadDxfBtn = document.getElementById('btn-download-dxf');
     this.viewGcodeBtn = document.getElementById('btn-view-gcode');
@@ -153,7 +156,10 @@ class ImageToGCodeWebApp {
     this.generateBtn.addEventListener('click', () => this._performConversion());
     this.resetBtn.addEventListener('click', () => this._loadDefaultPreset());
 
-    // Downloads
+    // Downloads & Exports
+    if (this.quickCopyGcodeBtn) {
+      this.quickCopyGcodeBtn.addEventListener('click', () => this._quickCopyGcode());
+    }
     this.downloadNcBtn.addEventListener('click', () => this._downloadNcFile());
     this.downloadDxfBtn.addEventListener('click', () => this._downloadDxfFile());
     this.viewGcodeBtn.addEventListener('click', () => this._openGcodeModal());
@@ -297,12 +303,15 @@ class ImageToGCodeWebApp {
     this.toolDiaInput.value = '3.0';
     this.toolNumberInput.value = '1';
     this.toolOffsetInput.value = '1';
+    if (this.cutterOffsetDInput) this.cutterOffsetDInput.value = '1';
+    if (this.cutterCompSelect) this.cutterCompSelect.value = 'G40';
     this.programNumberInput.value = '1000';
     this.stripDimensionsCheck.checked = false;
     this.refWidthInput.value = '';
     this.refHeightInput.value = '';
     this.pixelsPerMmInput.value = '';
     this.simulator.setToolDiameter(3.0);
+    if (this.quickCopyGcodeBtn) this.quickCopyGcodeBtn.disabled = true;
   }
 
   async _handleFileSelected(file) {
@@ -397,6 +406,8 @@ class ImageToGCodeWebApp {
     formData.append('tool_diameter', this.toolDiaInput.value.trim() || '3.0');
     formData.append('tool_number', this.toolNumberInput.value.trim() || '1');
     formData.append('tool_offset', this.toolOffsetInput.value.trim() || '1');
+    if (this.cutterOffsetDInput) formData.append('cutter_offset_d', this.cutterOffsetDInput.value.trim() || '1');
+    if (this.cutterCompSelect) formData.append('cutter_comp', this.cutterCompSelect.value || 'CAM');
     formData.append('program_number', this.programNumberInput.value.trim() || '1000');
     formData.append('strip_dimensions', this.stripDimensionsCheck.checked);
 
@@ -426,6 +437,7 @@ class ImageToGCodeWebApp {
       this.simulator.setSegments(result.segments, toolDia);
 
       // Enable actions
+      if (this.quickCopyGcodeBtn) this.quickCopyGcodeBtn.disabled = false;
       this.downloadNcBtn.disabled = false;
       this.downloadDxfBtn.disabled = !result.dxf_base64;
       this.viewGcodeBtn.disabled = false;
@@ -448,6 +460,30 @@ class ImageToGCodeWebApp {
       this._showStatus(`Error: ${err.message}`, 'error');
     } finally {
       this._setBusy(false);
+    }
+  }
+
+  async _quickCopyGcode() {
+    if (!this.conversionResult || !this.conversionResult.gcode) return;
+    try {
+      await navigator.clipboard.writeText(this.conversionResult.gcode);
+      const span = this.quickCopyGcodeBtn ? this.quickCopyGcodeBtn.querySelector('span') : null;
+      if (span) {
+        span.textContent = i18n.lang === 'vi' ? 'Đã sao chép!' : 'Copied!';
+      }
+      this._showStatus(
+        i18n.lang === 'vi'
+          ? 'Đã sao chép toàn bộ chương trình G-Code vào bộ nhớ tạm.'
+          : 'Copied entire G-Code program to clipboard.',
+        'success'
+      );
+      setTimeout(() => {
+        if (span) {
+          span.textContent = i18n.t('btnQuickCopyGcode');
+        }
+      }, 1800);
+    } catch (err) {
+      this._showStatus(`Clipboard error: ${err.message}`, 'error');
     }
   }
 
